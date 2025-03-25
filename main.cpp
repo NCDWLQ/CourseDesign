@@ -8,6 +8,7 @@ typedef int Status;
 #define OK 1
 #define ERROR 0
 
+#define USER_FILE "user.txt"
 
 // ANSI颜色代码
 #define RESET   "\033[0m"
@@ -24,8 +25,6 @@ typedef int Status;
 #define BOLD      "\033[1m"
 #define UNDERLINE "\033[4m"
 
-// 清屏
-#define CLEAR_SCREEN "\033[2J\033[H"
 
 // 使用状态机模式
 typedef enum
@@ -47,7 +46,7 @@ typedef struct User
 	int memberLevel;	// 会员等级，0 表示管理员
 	int points;			// 积分
 	struct User* next;
-} UserNode, * UserList, * CurrUser;
+} UserNode, * UserList;
 
 
 void printSeparator(const char* separator_char, const char* color, int width);
@@ -59,6 +58,7 @@ int getConsoleWidth();
 Status initUserList(UserList& L);
 Status appendUserList(UserList& L, char* username, char* password, int memberLevel, int points);
 Status readUserFromFile(const char* filename, UserList& L);
+Status saveUserToFile(const char* filename, UserList L);
 Status userExist(UserList L, char* username);
 
 SystemState mainMenu();
@@ -77,17 +77,19 @@ SystemState userRegister(UserList& L);
 //	return OK;
 //}
 
+// 定义全局变量，指示当前用户
+UserList currUser = NULL;
 
 int main()
 {
 	// 初始化 UserList 并从文件中读取用户信息
-	UserList L;
-	initUserList(L);
-	readUserFromFile("user.txt", L);
+	UserList User_L;
+	initUserList(User_L);
+	readUserFromFile(USER_FILE, User_L);
 
 	// 使用状态机模式管理程序流程
 	SystemState currState = MAIN_MENU;
-	UserList currUser = NULL;
+
 
 	while (currState != EXIT)
 	{
@@ -97,10 +99,10 @@ int main()
 				currState = mainMenu();
 				break;
 			case LOGIN:
-				currState = userLogin(L);
+				currState = userLogin(User_L);
 				break;
 			case REGISTER:
-				currState = userRegister(L);
+				currState = userRegister(User_L);
 				break;
 		}
 	}
@@ -114,7 +116,7 @@ void printHeader()
 	int width = getConsoleWidth();
 
 	printSeparator("=", CYAN, width);
-	printCentered("无人超市管理系统", WHITE, width);
+	printCentered("欢迎光临一次买够！！！！！", WHITE, width);
 	printSeparator("=", CYAN, width);
 }
 
@@ -210,6 +212,26 @@ Status readUserFromFile(const char* filename, UserList& L)
 	return OK;
 }
 
+// 将 UserList 中的用户数据保存到文件
+Status saveUserToFile(const char* filename, UserList L)
+{
+	FILE* fp;
+	UserList p = L->next;
+
+	if ((fp = fopen(filename, "w")) == NULL)
+	{
+		return ERROR;
+	}
+
+	while (p)
+	{
+		fprintf(fp, "%s %s %d %d\n", p->username, p->password, p->memberLevel, p->points);
+		p = p->next;
+	}
+
+	return OK;
+}
+
 // 判断用户是否存在
 Status userExist(UserList L, char* username)
 {
@@ -235,18 +257,25 @@ SystemState mainMenu()
 	system("cls");
 
 	// 打印标题  
-	printSeparator("=", CYAN, console_width);
+	// printSeparator("=", CYAN, console_width);
 	// ASCII Art  
-	printf("██╗    ██╗███████╗██╗      ██████╗ ██████╗ ███╗   ███╗███████╗██╗\n");
-	printf("██║    ██║██╔════╝██║     ██╔════╝██╔═══██╗████╗ ████║██╔════╝██║\n");
-	printf("██║ █╗ ██║█████╗  ██║     ██║     ██║   ██║██╔████╔██║█████╗  ██║\n");
-	printf("██║███╗██║██╔══╝  ██║     ██║     ██║   ██║██║╚██╔╝██║██╔══╝  ╚═╝\n");
-	printf("╚███╔███╔╝███████╗███████╗╚██████╗╚██████╔╝██║ ╚═╝ ██║███████╗██╗\n");
-	printf(" ╚══╝╚══╝ ╚══════╝╚══════╝ ╚═════╝ ╚═════╝ ╚═╝     ╚═╝╚══════╝╚═╝\n");
+	printf("██╗    ██╗███████╗██╗      ██████╗ ██████╗ ███╗   ███╗███████╗\n");
+	printf("██║    ██║██╔════╝██║     ██╔════╝██╔═══██╗████╗ ████║██╔════╝\n");
+	printf("██║ █╗ ██║█████╗  ██║     ██║     ██║   ██║██╔████╔██║█████╗  \n");
+	printf("██║███╗██║██╔══╝  ██║     ██║     ██║   ██║██║╚██╔╝██║██╔══╝  \n");
+	printf("╚███╔███╔╝███████╗███████╗╚██████╗╚██████╔╝██║ ╚═╝ ██║███████╗\n");
+	printf(" ╚══╝╚══╝ ╚══════╝╚══════╝ ╚═════╝ ╚═════╝ ╚═╝     ╚═╝╚══════╝\n");
+	printf("╔══╗ ╔╗ ╔╗        ╔═╗╔═╗     ╔═══╗╔═══╗╔╗╔╗╔╗╔╗╔╗\n");
+	printf("╚╣╠╝╔╝╚╗║║        ║║╚╝║║     ║╔═╗║║╔═╗║║║║║║║║║║║\n");
+	printf(" ║║ ╚╗╔╝╚╝╔══╗    ║╔╗╔╗║╔╗ ╔╗║║ ╚╝║║ ║║║║║║║║║║║║\n");
+	printf(" ║║  ║║   ║══╣    ║║║║║║║║ ║║║║╔═╗║║ ║║╚╝╚╝╚╝╚╝╚╝\n");
+	printf("╔╣╠╗ ║╚╗  ╠══║    ║║║║║║║╚═╝║║╚╩═║║╚═╝║╔╗╔╗╔╗╔╗╔╗\n");
+	printf("╚══╝ ╚═╝  ╚══╝    ╚╝╚╝╚╝╚═╗╔╝╚═══╝╚═══╝╚╝╚╝╚╝╚╝╚╝\n");
+	printf("                        ╔═╝║                     \n");
+	printf("                        ╚══╝                     \n");
 
-	printSeparator("=", CYAN, console_width);
-	printCentered("欢迎光临一次买够！", BOLD WHITE, console_width);
-	printSeparator("-", CYAN, console_width);
+	//printSeparator("=", CYAN, console_width);
+	printHeader();
 
 	printf("%s您当前未登录！%s\n", BOLD YELLOW, RESET);
 
@@ -304,6 +333,8 @@ SystemState userLogin(UserList& L)
 				printf("%s管理员登录成功！欢迎您，%s！%s\n", BOLD GREEN, CurrUser->username, RESET);
 				return ADMIN_MENU;
 			}
+			currUser = CurrUser;
+
 			Sleep(1000);
 		}
 		CurrUser = CurrUser->next;
@@ -339,8 +370,8 @@ SystemState userRegister(UserList& L)
 	scanf("%19s", password);
 	
 	appendUserList(L, username, password, 1, 0);
+	saveUserToFile(USER_FILE, L);
 	printf("%s注册成功！正在跳转登录%s\n", BOLD GREEN, RESET);
 	Sleep(1000);
 	return LOGIN;
-	
 }
