@@ -53,17 +53,16 @@ typedef struct User
 void printSeparator(const char* separator_char, const char* color, int width);
 void printCentered(const char* text, const char* color, int console_width);
 void printHeader();
-void cls();
 
 int getConsoleWidth();
 
 Status initUserList(UserList& L);
 Status appendUserList(UserList& L, char* username, char* password, int memberLevel, int points);
 Status readUserFromFile(const char* filename, UserList& L);
+Status userExist(UserList L, char* username);
 
 SystemState mainMenu();
 SystemState userLogin(UserList &L);
-Status userExist(UserList L, char* username);
 SystemState userRegister(UserList& L);
 
 // 测试链表
@@ -100,6 +99,9 @@ int main()
 			case LOGIN:
 				currState = userLogin(L);
 				break;
+			case REGISTER:
+				currState = userRegister(L);
+				break;
 		}
 	}
 
@@ -114,11 +116,6 @@ void printHeader()
 	printSeparator("=", CYAN, width);
 	printCentered("无人超市管理系统", WHITE, width);
 	printSeparator("=", CYAN, width);
-}
-
-void cls()
-{
-	printf("%s", CLEAR_SCREEN);
 }
 
 // 打印一行分隔符
@@ -213,6 +210,21 @@ Status readUserFromFile(const char* filename, UserList& L)
 	return OK;
 }
 
+// 判断用户是否存在
+Status userExist(UserList L, char* username)
+{
+	UserList p = L->next;
+	while (p)
+	{
+		if (strcmp(p->username, username) == 0)
+		{
+			return OK;
+		}
+		p = p->next;
+	}
+	return ERROR;
+}
+
 // 主菜单
 SystemState mainMenu()
 {
@@ -220,7 +232,7 @@ SystemState mainMenu()
 	int choice = -1;
 
 	// 清屏  
-	cls();
+	system("cls");
 
 	// 打印标题  
 	printSeparator("=", CYAN, console_width);
@@ -233,7 +245,7 @@ SystemState mainMenu()
 	printf(" ╚══╝╚══╝ ╚══════╝╚══════╝ ╚═════╝ ╚═════╝ ╚═╝     ╚═╝╚══════╝╚═╝\n");
 
 	printSeparator("=", CYAN, console_width);
-	printCentered("欢迎光临无人超市！", BOLD WHITE, console_width);
+	printCentered("欢迎光临一次买够！", BOLD WHITE, console_width);
 	printSeparator("-", CYAN, console_width);
 
 	printf("%s您当前未登录！%s\n", BOLD YELLOW, RESET);
@@ -268,7 +280,7 @@ SystemState mainMenu()
 // 用户登录
 SystemState userLogin(UserList& L)
 {
-	cls();
+	system("cls");
 	printHeader();
 
 	char username[20] = { 0 }, password[20] = { 0 };
@@ -302,29 +314,19 @@ SystemState userLogin(UserList& L)
 	return LOGIN;
 }
 
-// 判断用户是否存在
-Status userExist(UserList L, char* username)
-{
-	UserList p = L->next;
-	while (p)
-	{
-		if (strcmp(p->username, username) == 0)
-		{
-			return OK;
-		}
-		p = p->next;
-	}
-	return ERROR;
-}
 
 // 用户注册
 SystemState userRegister(UserList& L)
 {
-	cls();
-	printHeader();
 	char username[20] = { 0 }, password[20] = { 0 };
+
+	system("cls");
+	printHeader();
+	printCentered("用户注册", BOLD YELLOW, getConsoleWidth());
+	printf("%s用户名及密码均不得超过 19 个字符！%s\n", BOLD RED, RESET);
 	printf("请输入用户名: ");
-	scanf("%s", username);
+	scanf("%19s", username);
+
 	// 验证用户名是否已经存在
 	if (userExist(L, username))
 	{
@@ -334,6 +336,11 @@ SystemState userRegister(UserList& L)
 	}
 	
 	printf("请输入密码: ");
-	scanf("%s", password);
-
+	scanf("%19s", password);
+	
+	appendUserList(L, username, password, 1, 0);
+	printf("%s注册成功！正在跳转登录%s\n", BOLD GREEN, RESET);
+	Sleep(1000);
+	return LOGIN;
+	
 }
