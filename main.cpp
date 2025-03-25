@@ -1,6 +1,7 @@
 ﻿#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <conio.h>
 #include <Windows.h>
 
 
@@ -228,6 +229,7 @@ Status saveUserToFile(const char* filename, UserList L)
 		fprintf(fp, "%s %s %d %d\n", p->username, p->password, p->memberLevel, p->points);
 		p = p->next;
 	}
+	fclose(fp);
 
 	return OK;
 }
@@ -312,11 +314,33 @@ SystemState userLogin(UserList& L)
 	system("cls");
 	printHeader();
 
+	char c;
 	char username[20] = { 0 }, password[20] = { 0 };
 	printf("请输入用户名: ");
 	scanf("%s", username);
 	printf("请输入密码: ");
-	scanf("%s", password);
+	while (1)
+	{
+		c = _getch();
+		if (c == '\r')
+		{
+			break;
+		}
+		else if (c == '\b')
+		{
+			printf("\b \b");
+			if (strlen(password) > 0)
+			{
+				password[strlen(password) - 1] = '\0';
+			}
+		}
+		else
+		{
+			password[strlen(password)] = c;
+			printf("*");
+		}
+	}
+	printf("\n");
 
 	UserList CurrUser = L->next;
 	while (CurrUser)
@@ -325,7 +349,7 @@ SystemState userLogin(UserList& L)
 		{
 			if (CurrUser->memberLevel)
 			{
-				printf("%s用户登录成功！欢迎您，%s！\n您的会员等级：%d\n剩余积分：%d%s\n", BOLD GREEN, CurrUser->username, CurrUser->memberLevel, CurrUser->points, RESET);
+				printf("%s用户登录成功！欢迎您，%s！%s\n", BOLD GREEN, CurrUser->username, RESET);
 				return USER_MENU;
 			}
 			else
@@ -349,12 +373,13 @@ SystemState userLogin(UserList& L)
 // 用户注册
 SystemState userRegister(UserList& L)
 {
-	char username[20] = { 0 }, password[20] = { 0 };
+	char c;
+	char username[20] = { 0 }, password[20] = { 0 }, confirm_password[20] = { 0 };
 
 	system("cls");
 	printHeader();
 	printCentered("用户注册", BOLD YELLOW, getConsoleWidth());
-	printf("%s用户名及密码均不得超过 19 个字符！%s\n", BOLD RED, RESET);
+	printf("%s用户名及密码均不得超过 19 个字符！%s\n", BOLD YELLOW, RESET);
 	printf("请输入用户名: ");
 	scanf("%19s", username);
 
@@ -366,12 +391,66 @@ SystemState userRegister(UserList& L)
 		return REGISTER;
 	}
 	
-	printf("请输入密码: ");
-	scanf("%19s", password);
+	printf("请输入密码: "); 
+	while (1)
+	{
+		c = _getch();
+		if (c == '\r')
+		{
+			break;
+		}
+		else if (c == '\b')
+		{
+			printf("\b \b");
+			if (strlen(password) > 0)
+			{
+				password[strlen(password) - 1] = '\0';
+			}
+		}
+		else
+		{
+			password[strlen(password)] = c;
+			printf("*");
+		}
+	}
+	printf("\n");
+	printf("请确认密码: ");
+	while (1)
+	{
+		c = _getch();
+		if (c == '\r')
+		{
+			break;
+		}
+		else if (c == '\b')
+		{
+			printf("\b \b");
+			if (strlen(confirm_password) > 0)
+			{
+				confirm_password[strlen(confirm_password) - 1] = '\0';
+			}
+		}
+		else
+		{
+			confirm_password[strlen(confirm_password)] = c;
+			printf("*");
+		}
+	}
+	printf("\n");
 	
-	appendUserList(L, username, password, 1, 0);
-	saveUserToFile(USER_FILE, L);
-	printf("%s注册成功！正在跳转登录%s\n", BOLD GREEN, RESET);
-	Sleep(1000);
-	return LOGIN;
+	// 判断两次密码是否一致
+	if (strcmp(password, confirm_password) == 0)
+	{
+		appendUserList(L, username, password, 1, 0);
+		saveUserToFile(USER_FILE, L);
+		printf("%s注册成功！正在跳转登录%s\n", BOLD GREEN, RESET);
+		Sleep(1000);
+		return LOGIN;
+	}
+	else
+	{
+		printf("%s两次输入的密码不一致，请重新输入！%s\n", BOLD RED, RESET);
+		Sleep(1000);
+		return REGISTER;
+	}
 }
