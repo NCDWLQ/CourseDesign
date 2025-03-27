@@ -362,6 +362,6 @@ MigrationBackup/
 # Fody - auto-generated XML schema
 FodyWeavers.xsd
 
+# 忽略 txt 与 log 文件
 *.txt
 *.log
-/user.txt
