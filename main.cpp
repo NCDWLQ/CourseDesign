@@ -36,6 +36,11 @@ typedef enum
 	FORGOT_PASSWORD,
 	USER_MENU,
 	ADMIN_MENU,
+	VIEW_PRODUCTS,
+	SEARCH_PRODUCTS,
+	SHOPPING_CART,
+	CHECKOUT,
+	SHOPPING_HISTORY,
 	EXIT
 }SystemState;
 
@@ -64,9 +69,12 @@ Status userExist(UserList L, char* username);
 Status updatePassword(UserList L, char* username, char* newPassword);
 
 SystemState mainMenu();
+
 SystemState userLogin(UserList &L);
 SystemState userRegister(UserList& L);
 SystemState forgotPassword(UserList& L);
+
+SystemState userMenu();
 
 // 测试链表
 Status printUserList(UserList L)
@@ -108,6 +116,9 @@ int main()
 				break;
 			case FORGOT_PASSWORD:
 				currState = forgotPassword(User_L);
+				break;
+			case USER_MENU:
+				currState = userMenu();
 				break;
 		}
 	}
@@ -291,7 +302,7 @@ SystemState mainMenu()
 	//printSeparator("=", CYAN, console_width);
 	printHeader();
 
-	printf("%s您当前未登录！%s\n", BOLD YELLOW, RESET);
+	printf("%s您当前未登录！登录以开始购物%s\n", BOLD YELLOW, RESET);
 
 	// 操作选择  
 	printf("请选择要进行的操作：\n");
@@ -311,6 +322,8 @@ SystemState mainMenu()
 		return REGISTER;
 	case 3:
 		return FORGOT_PASSWORD;
+	case 100:
+		return USER_MENU;  // 仅供测试使用
 	case 0:
 		return EXIT;
 	default:
@@ -363,19 +376,20 @@ SystemState userLogin(UserList& L)
 	{
 		if (strcmp(CurrUser->username, username) == 0 && strcmp(CurrUser->password, password) == 0)
 		{
+			currUser = CurrUser;
 			if (CurrUser->memberLevel)
 			{
 				printf("%s用户登录成功！欢迎您，%s！%s\n", BOLD GREEN, CurrUser->username, RESET);
+				Sleep(1000);
 				return USER_MENU;
 			}
 			else
 			{
 				printf("%s管理员登录成功！欢迎您，%s！%s\n", BOLD GREEN, CurrUser->username, RESET);
+				Sleep(1000);
 				return ADMIN_MENU;
 			}
-			currUser = CurrUser;
 
-			Sleep(1000);
 		}
 		CurrUser = CurrUser->next;
 	}
@@ -384,7 +398,6 @@ SystemState userLogin(UserList& L)
 	Sleep(1000);
 	return LOGIN;
 }
-
 
 // 用户注册
 SystemState userRegister(UserList& L)
@@ -580,5 +593,57 @@ SystemState forgotPassword(UserList& L)
 		printf("%s两次输入的密码不一致，请重新输入！%s\n", BOLD RED, RESET);
 		Sleep(1000);
 		return FORGOT_PASSWORD;
+	}
+}
+
+// 显示用户菜单
+SystemState userMenu()
+{
+	UserList CurrUser = currUser;
+	int choice = -1;
+
+	// 显示欢迎信息
+	system("cls");
+	printHeader();
+	printf("欢迎回来，%s！\n您的会员等级：%d，购物积分：%d\n", CurrUser->username, CurrUser->memberLevel, CurrUser->points);
+	printSeparator("-", WHITE, getConsoleWidth());
+
+	// 显示菜单选项
+	printf("请选择要进行的操作：\n");
+	printf("1. 浏览商品\n");
+	printf("2. 搜索商品\n");
+	printf("3. 查看购物车\n");
+	printf("4. 自助结账\n");
+	printf("5. 购物记录\n");
+	printf("0. 退出登录\n");
+	printf("%s输入序号进行对应操作：%s", YELLOW, RESET);
+	scanf("%d", &choice);
+
+	switch (choice)
+	{
+	case 1:
+		return VIEW_PRODUCTS;
+		break;
+	case 2:
+		return SEARCH_PRODUCTS;
+		break;
+	case 3:
+		return SHOPPING_CART;
+		break;
+	case 4:
+		return CHECKOUT;
+		break;
+	case 5:
+		return SHOPPING_HISTORY;
+		break;
+	case 0:
+		currUser = NULL;
+		return MAIN_MENU;
+		break;
+	default:
+		printf("%s输入的序号不存在，请重新输入！%s\n", BOLD RED, RESET);
+		Sleep(1000);
+		return USER_MENU;
+		break;
 	}
 }
