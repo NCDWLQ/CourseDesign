@@ -54,6 +54,17 @@ typedef struct User
 	struct User* next;
 } UserNode, * UserList;
 
+// 商品结构体
+typedef struct Product
+{
+	int id;
+	char name[50];
+	char category[2][15];
+	int stock;
+	double price;
+	double discount;	// 优惠价（若无优惠价设为 -1）
+	struct Product* next;
+}ProductNode, * ProductList;
 
 void printSeparator(const char* separator_char, const char* color, int width);
 void printCentered(const char* text, const char* color, int console_width);
@@ -68,6 +79,10 @@ Status saveUserToFile(const char* filename, UserList L);
 Status userExist(UserList L, char* username);
 Status updatePassword(UserList L, char* username, char* newPassword);
 
+Status initProductList(ProductList& L);
+Status appendProductList(ProductList& L, int id, char* name, char* category1, char* category2, int stock, double price, double discount);
+Status readProductFromFile(const char* filename, ProductList& L);
+
 SystemState mainMenu();
 
 SystemState userLogin(UserList &L);
@@ -75,6 +90,7 @@ SystemState userRegister(UserList& L);
 SystemState forgotPassword(UserList& L);
 
 SystemState userMenu();
+
 
 // 测试链表
 Status printUserList(UserList L)
@@ -97,6 +113,12 @@ int main()
 	UserList User_L;
 	initUserList(User_L);
 	readUserFromFile(USER_FILE, User_L);
+
+	// 初始化 ProductList
+	ProductList Product_L;
+	initProductList(Product_L);
+	readProductFromFile("product.txt", Product_L);
+
 
 	// 使用状态机模式管理程序流程
 	SystemState currState = MAIN_MENU;
@@ -280,6 +302,81 @@ Status updatePassword(UserList L, char* username, char* newPassword)
 	return ERROR;
 }
 
+// 初始化 ProductList
+Status initProductList(ProductList& L)
+{
+	L = new ProductNode;
+	L->next = NULL;
+	return OK;
+}
+
+// 向 ProductList 的末尾添加一个节点
+Status appendProductList(ProductList& L, int id, char* name, char* category1, char* category2, int stock, double price, double discount)
+{
+	ProductList p, newNode;
+
+	// 新建一个节点
+	newNode = new ProductNode;
+	newNode->id = id;
+	// 这里涉及中文可能需要更改
+	strcpy(newNode->name, name);
+	strcpy(newNode->category[0], category1);
+	strcpy(newNode->category[1], category2);
+	newNode->stock = stock;
+	newNode->price = price;
+	newNode->discount = discount;
+	newNode->next = NULL;
+
+	// 将新节点添加到链表末尾
+	p = L;
+	while (p->next)
+	{
+		p = p->next;
+	}
+	p->next = newNode;
+
+	return OK;
+}
+
+// 从文件中读取 ProductList
+Status readProductFromFile(const char* filename, ProductList& L)
+{
+	FILE* fp;
+	if ((fp = fopen(filename, "r")) == NULL)
+	{
+		return ERROR;
+	}
+
+	int id, stock;
+	char name[50] = { 0 };
+	double price, discount;
+	char category_t[31], category1[15], category2[15];
+
+	while (fscanf(fp, "%d %s %s %d %lf  %lf", &id, name, category_t, &stock, &price, &discount) != EOF)
+	{
+		// 处理商品分类
+		char* token;
+		token = strtok(category_t, "@");
+		strcpy(category1, token);
+		token = strtok(NULL, "@");
+		if (token != NULL)
+		{
+			strcpy(category2, token);
+		}
+		else
+		{
+			category2[0] = '\0';
+		}
+
+		appendProductList(L, id, name, category1, category2, stock, price, discount);
+	}
+
+	fclose(fp);
+	return OK;
+}
+
+
+
 // 主菜单
 SystemState mainMenu()
 {
@@ -323,7 +420,7 @@ SystemState mainMenu()
 	case 3:
 		return FORGOT_PASSWORD;
 	case 100:
-		return USER_MENU;  // 仅供测试使用
+		return TEST;  // 仅供测试使用
 	case 0:
 		return EXIT;
 	default:
@@ -476,7 +573,7 @@ SystemState userRegister(UserList& L)
 	{
 		appendUserList(L, username, password, 1, 0);
 		saveUserToFile(USER_FILE, L);
-		printf("%s密码更改成功！正在跳转登录%s\n", BOLD GREEN, RESET);
+		printf("%s注册成功！正在跳转登录%s\n", BOLD GREEN, RESET);
 		Sleep(1000);
 		return LOGIN;
 	}
@@ -484,7 +581,7 @@ SystemState userRegister(UserList& L)
 	{
 		printf("%s两次输入的密码不一致，请重新输入！%s\n", BOLD RED, RESET);
 		Sleep(1000);
-		return FORGOT_PASSWORD;
+		return REGISTER;
 	}
 }
 
@@ -584,7 +681,7 @@ SystemState forgotPassword(UserList& L)
 	{
 		updatePassword(L, username, password);
 		saveUserToFile(USER_FILE, L);
-		printf("%s注册成功！正在跳转登录%s\n", BOLD GREEN, RESET);
+		printf("%s密码更改成功！正在跳转登录%s\n", BOLD GREEN, RESET);
 		Sleep(1000);
 		return LOGIN;
 	}
@@ -638,6 +735,8 @@ SystemState userMenu()
 		break;
 	case 0:
 		currUser = NULL;
+		printf("%s已退出登录！正在返回主菜单%s\n", BOLD GREEN, RESET);
+		Sleep(1000);
 		return MAIN_MENU;
 		break;
 	default:
