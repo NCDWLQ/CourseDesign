@@ -111,6 +111,7 @@ SystemState forgotPassword(UserList& L);
 
 SystemState userMenu();
 SystemState viewProducts(ProductList& L);
+SystemState searchProducts(ProductList& L);
 
 // 测试链表
 Status printUserList(UserList L)
@@ -165,6 +166,9 @@ int main()
 			break;
 		case VIEW_PRODUCTS:
 			currState = viewProducts(Product_L);
+			break;
+		case SEARCH_PRODUCTS:
+			currState = searchProducts(Product_L);
 			break;
 		case TEST:
 			return OK;
@@ -502,8 +506,8 @@ Status printProductList(ProductList L, int is_admin)
 {
 	ProductList p = L->next;
 	char category[31];
-
-	//printf("ID  商品名称                                          商品分类                      \n");
+	int count = 0;
+	
 	printAligned("ID", 4);
 	printAligned("商品名称", 50);
 	printAligned("商品分类", 30);
@@ -515,7 +519,7 @@ Status printProductList(ProductList L, int is_admin)
 	printAligned("优惠价", 10);
 	printf("\n");
 	//printf("价格      优惠价\n");
-	printSeparator("=", WHITE, getConsoleWidth());
+	printSeparator("-", WHITE, getConsoleWidth());
 
 
 	while (p)
@@ -553,8 +557,11 @@ Status printProductList(ProductList L, int is_admin)
 			printf("%-10s", "无优惠");
 		}
 		printf("\n");
+		count++;
 		p = p->next;
 	}
+	printSeparator("-", WHITE, getConsoleWidth());
+	printf("%s共找到 %d 件商品%s\n\n", GREEN, count, RESET);
 	return OK;
 }
 
@@ -963,11 +970,10 @@ SystemState viewProducts(ProductList& L)
 	system("cls");
 	printHeader();
 	printProductList(L, 0);
-	printSeparator("-", WHITE, getConsoleWidth());
 	while (1)
 	{
 		int id = -1, num = -1, stock;
-		printf("输入商品 ID 进行购买（输入 0 返回用户菜单）：");
+		printf("%s输入商品 ID 进行购买（输入 0 返回用户菜单）：%s", YELLOW, RESET);
 		scanf("%d", &id);
 		if (id == 0)
 		{
@@ -988,7 +994,7 @@ SystemState viewProducts(ProductList& L)
 			getProductStock(L, id, stock);
 			while (1)
 			{
-				printf("输入购买数量：");
+				printf("%s输入购买数量：%s", YELLOW, RESET);
 				scanf("%d", &num);
 				if (num <= 0)
 				{
@@ -1008,6 +1014,83 @@ SystemState viewProducts(ProductList& L)
 				}
 			}
 		}
+	}
+}
 
+SystemState searchProducts(ProductList& L)
+{
+	system("cls");
+	printHeader();
+
+	while (1)
+	{
+		char keyword[50] = { 0 };
+		printf("输入商品名称或分类进行搜索（支持模糊搜索）\n%s请输入（输入 0 返回用户菜单）：%s", YELLOW, RESET);
+		scanf("%49s", keyword);
+
+		if (strcmp(keyword, "0") == 0)
+		{
+			return USER_MENU;
+		}
+
+		ProductList p = L->next;
+		int found = 0, count = 0;
+
+		// 遍历商品列表，查找匹配的商品
+		while (p)
+		{
+			// 将一级分类与二级分类（如果有）连接起来，便于搜索
+			char category[31];
+			strcpy(category, p->category[0]);
+			if (p->category[1][0] != '\0')
+			{
+				strcat(category, "->");
+				strcat(category, p->category[1]);
+			}
+
+			// 模糊搜索商品名称和分类
+			if (strstr(p->name, keyword) || strstr(category, keyword))
+			{
+				if (!found)
+				{
+					printf("\n");
+					// 打印商品标题
+					printAligned("ID", 4);
+					printAligned("商品名称", 50);
+					printAligned("商品分类", 30);
+					printAligned("价格", 10);
+					printAligned("优惠价", 10);
+					printf("\n");
+					printSeparator("-", WHITE, getConsoleWidth());
+					found = 1;
+				}
+				// 打印商品信息
+				printf("%-4d", p->id);
+				printAligned(p->name, 50);
+				printAligned(category, 30);
+				printf("%-10.2f", p->price);
+				if (p->discount != -1)
+				{
+					printf("%-10.2f", p->discount);
+				}
+				else
+				{
+					printf("%-10s", "无优惠");
+				}
+				count++;
+				printf("\n");
+			}
+			p = p->next;
+		}
+		// 如果没有找到匹配的商品
+		if (!found)
+		{
+			printf("%s没有找到匹配的商品！%s\n\n", BOLD RED, RESET);
+		}
+		else
+		{
+			printSeparator("-", WHITE, getConsoleWidth());
+			printf("%s共找到 %d 件商品！%s\n\n", BOLD GREEN, count, RESET);
+		}
 	}
 }
