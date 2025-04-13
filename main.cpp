@@ -11,6 +11,7 @@ typedef int Status;
 #define ERROR 0
 
 #define USER_FILE "user.txt"
+#define PRODUCT_FILE "product.txt"
 
 // ANSI颜色代码
 #define RESET   "\033[0m"
@@ -41,7 +42,8 @@ typedef enum
 	SHOPPING_CART,
 	CHECKOUT,
 	SHOPPING_HISTORY,
-	EXIT
+	EXIT,
+	TEST
 }SystemState;
 
 // 用户结构体
@@ -66,10 +68,20 @@ typedef struct Product
 	struct Product* next;
 }ProductNode, * ProductList;
 
+// 购物车结构体
+typedef struct ShoppingCart
+{
+	int id;
+	int quantity;	// 数量
+	struct ShoppingCart* next;
+} CartNode, * CartList;
+
 void printSeparator(const char* separator_char, const char* color, int width);
 void printCentered(const char* text, const char* color, int console_width);
 void printHeader();
+void printAligned(const char* str, int target_width);
 
+int getDisplayWidth(const char* str);
 int getConsoleWidth();
 
 Status initUserList(UserList& L);
@@ -82,15 +94,23 @@ Status updatePassword(UserList L, char* username, char* newPassword);
 Status initProductList(ProductList& L);
 Status appendProductList(ProductList& L, int id, char* name, char* category1, char* category2, int stock, double price, double discount);
 Status readProductFromFile(const char* filename, ProductList& L);
+Status productIDExist(ProductList L, int id);
+Status getProductName(ProductList L, int id, char* name);
+Status getProductStock(ProductList L, int id, int& stock);
+Status printProductList(ProductList L, int is_admin);
+
+Status initCartList(CartList& L);
+Status appendCartList(CartList L, int id, int quantity);
+
 
 SystemState mainMenu();
 
-SystemState userLogin(UserList &L);
+SystemState userLogin(UserList& L);
 SystemState userRegister(UserList& L);
 SystemState forgotPassword(UserList& L);
 
 SystemState userMenu();
-
+SystemState viewProducts(ProductList& L);
 
 // 测试链表
 Status printUserList(UserList L)
@@ -106,6 +126,8 @@ Status printUserList(UserList L)
 
 // 定义全局变量，指示当前用户
 UserList currUser = NULL;
+// 定义全局指针变量，指向购物车链表
+CartList Cart_L = NULL;
 
 int main()
 {
@@ -117,8 +139,7 @@ int main()
 	// 初始化 ProductList
 	ProductList Product_L;
 	initProductList(Product_L);
-	readProductFromFile("product.txt", Product_L);
-
+	readProductFromFile(PRODUCT_FILE, Product_L);
 
 	// 使用状态机模式管理程序流程
 	SystemState currState = MAIN_MENU;
@@ -127,21 +148,26 @@ int main()
 	{
 		switch (currState)
 		{
-			case MAIN_MENU:
-				currState = mainMenu();
-				break;
-			case LOGIN:
-				currState = userLogin(User_L);
-				break;
-			case REGISTER:
-				currState = userRegister(User_L);
-				break;
-			case FORGOT_PASSWORD:
-				currState = forgotPassword(User_L);
-				break;
-			case USER_MENU:
-				currState = userMenu();
-				break;
+		case MAIN_MENU:
+			currState = mainMenu();
+			break;
+		case LOGIN:
+			currState = userLogin(User_L);
+			break;
+		case REGISTER:
+			currState = userRegister(User_L);
+			break;
+		case FORGOT_PASSWORD:
+			currState = forgotPassword(User_L);
+			break;
+		case USER_MENU:
+			currState = userMenu();
+			break;
+		case VIEW_PRODUCTS:
+			currState = viewProducts(Product_L);
+			break;
+		case TEST:
+			return OK;
 		}
 	}
 
@@ -149,14 +175,6 @@ int main()
 }
 
 
-void printHeader()
-{
-	int width = getConsoleWidth();
-
-	printSeparator("=", CYAN, width);
-	printCentered("欢迎光临一次买够！！！！！", WHITE, width);
-	printSeparator("=", CYAN, width);
-}
 
 // 打印一行分隔符
 void printSeparator(const char* separator_char, const char* color, int width)
@@ -170,7 +188,6 @@ void printSeparator(const char* separator_char, const char* color, int width)
 	}
 	printf("%s\n", RESET);
 }
-
 // 打印居中字符串
 void printCentered(const char* text, const char* color, int console_width)
 {
@@ -185,16 +202,58 @@ void printCentered(const char* text, const char* color, int console_width)
 	printf("%s%s%s\n", color, text, RESET);
 }
 
+void printHeader()
+{
+	int width = getConsoleWidth();
+
+	printSeparator("=", CYAN, width);
+	printCentered("欢迎光临一次买够！！！！！", WHITE, width);
+	printSeparator("=", CYAN, width);
+}
+
+// 打印对齐的字符串
+void printAligned(const char* str, int target_width) {
+	printf("%s", str);
+	int actual_width = getDisplayWidth(str);
+	for (int i = 0; i < target_width - actual_width; ++i) {
+		putchar(' ');
+	}
+}
+
+// 获取字符串的显示宽度（考虑中文字符）
+int getDisplayWidth(const char* str) {
+	int width = 0;
+	while (*str) {
+		unsigned char ch = (unsigned char)*str;		// 用 unsigned char 来处理字符，是因为有可能是负数
+		if (ch == '\n' || ch == '\r' || ch == '\t' || ch < 32)
+		{
+			str++;		// 跳过控制字符
+			continue;
+		}
+		if (ch >= 0x80) {
+			width += 2;
+			str += 2;
+		}
+		else {
+			width += 1;
+			str++;
+		}
+	}
+	return width;
+}
+
+
+
 // 使用 Windows.h 中的 GetConsoleScreenBufferInfo 获取终端宽度
 int getConsoleWidth() {
-    CONSOLE_SCREEN_BUFFER_INFO csbi;
-    int width = 80; // 默认宽度
+	CONSOLE_SCREEN_BUFFER_INFO csbi;
+	int width = 80; // 默认宽度
 
-    if (GetConsoleScreenBufferInfo(GetStdHandle(STD_OUTPUT_HANDLE), &csbi)) {
-        width = csbi.srWindow.Right - csbi.srWindow.Left + 1;
-    }
+	if (GetConsoleScreenBufferInfo(GetStdHandle(STD_OUTPUT_HANDLE), &csbi)) {
+		width = csbi.srWindow.Right - csbi.srWindow.Left + 1;
+	}
 
-    return width;
+	return width;
 }
 
 // 初始化 UserList
@@ -317,8 +376,8 @@ Status appendProductList(ProductList& L, int id, char* name, char* category1, ch
 
 	// 新建一个节点
 	newNode = new ProductNode;
+
 	newNode->id = id;
-	// 这里涉及中文可能需要更改
 	strcpy(newNode->name, name);
 	strcpy(newNode->category[0], category1);
 	strcpy(newNode->category[1], category2);
@@ -354,6 +413,14 @@ Status readProductFromFile(const char* filename, ProductList& L)
 
 	while (fscanf(fp, "%d %s %s %d %lf  %lf", &id, name, category_t, &stock, &price, &discount) != EOF)
 	{
+		// 将商品名称中的逗号替换为空格
+		for (int i = 0; name[i] != '\0'; i++)
+		{
+			if (name[i] == ',')
+			{
+				name[i] = ' ';
+			}
+		}
 		// 处理商品分类
 		char* token;
 		token = strtok(category_t, "@");
@@ -375,7 +442,148 @@ Status readProductFromFile(const char* filename, ProductList& L)
 	return OK;
 }
 
+// 判断商品 ID 是否存在
+Status productIDExist(ProductList L, int id)
+{
+	ProductList p = L->next;
+	while (p)
+	{
+		if (p->id == id)
+		{
+			return OK;
+		}
+		p = p->next;
+	}
+	return ERROR;
+}
 
+// 根据商品 ID 获取商品名称
+Status getProductName(ProductList L, int id, char* name)
+{
+	if (L->next == NULL)
+	{
+		return ERROR;
+	}
+	ProductList p = L->next;
+	while (p)
+	{
+		if (p->id == id)
+		{
+			strcpy(name, p->name);
+			return OK;
+		}
+		p = p->next;
+	}
+	return ERROR;
+}
+
+// 获取商品库存
+Status getProductStock(ProductList L, int id, int& stock)
+{
+	if (L->next == NULL)
+	{
+		return ERROR;
+	}
+	ProductList p = L->next;
+	while (p)
+	{
+		if (p->id == id)
+		{
+			stock = p->stock;
+			return OK;
+		}
+		p = p->next;
+	}
+	return ERROR;
+}
+
+// 打印商品列表
+Status printProductList(ProductList L, int is_admin)
+{
+	ProductList p = L->next;
+	char category[31];
+
+	//printf("ID  商品名称                                          商品分类                      \n");
+	printAligned("ID", 4);
+	printAligned("商品名称", 50);
+	printAligned("商品分类", 30);
+	if (is_admin)
+	{
+		printAligned("库存", 10);
+	}
+	printAligned("价格", 10);
+	printAligned("优惠价", 10);
+	printf("\n");
+	//printf("价格      优惠价\n");
+	printSeparator("=", WHITE, getConsoleWidth());
+
+
+	while (p)
+	{
+		if (!is_admin && p->stock == 0)
+		{
+			// 普通用户不显示库存为 0 的商品
+			p = p->next;
+			continue;
+		}
+		strcpy(category, p->category[0]);
+		if (p->category[1][0] != '\0')
+		{
+			strcat(category, "->");
+			strcat(category, p->category[1]);
+		}
+
+		printf("%-4d", p->id);
+		printAligned(p->name, 50);
+		printAligned(category, 30);
+
+		if (is_admin)
+		{
+			// 管理员显示库存
+			printf("%-10d", p->stock);
+		}
+
+		printf("%-10.2f", p->price);
+		if (p->discount != -1)
+		{
+			printf("%-10.2f", p->discount);
+		}
+		else
+		{
+			printf("%-10s", "无优惠");
+		}
+		printf("\n");
+		p = p->next;
+	}
+	return OK;
+}
+
+// 初始化购物车链表
+Status initCartList(CartList& L)
+{
+	L = new CartNode;
+	L->next = NULL;
+	return OK;
+}
+
+// 向购物车链表的末尾添加一个节点
+Status appendCartList(CartList L, int id, int quantity)
+{
+	CartList p, newNode;
+	// 新建一个节点
+	newNode = new CartNode;
+	newNode->id = id;
+	newNode->quantity = quantity;
+	newNode->next = NULL;
+	// 将新节点添加到链表末尾
+	p = L;
+	while (p->next)
+	{
+		p = p->next;
+	}
+	p->next = newNode;
+	return OK;
+}
 
 // 主菜单
 SystemState mainMenu()
@@ -386,8 +594,7 @@ SystemState mainMenu()
 	// 清屏  
 	system("cls");
 
-	// 打印标题  
-	// printSeparator("=", CYAN, console_width);
+	// 打印标题
 	// ASCII Art  
 	printf("██╗    ██╗███████╗██╗      ██████╗ ██████╗ ███╗   ███╗███████╗\n");
 	printf("██║    ██║██╔════╝██║     ██╔════╝██╔═══██╗████╗ ████║██╔════╝\n");
@@ -419,7 +626,7 @@ SystemState mainMenu()
 		return REGISTER;
 	case 3:
 		return FORGOT_PASSWORD;
-	case 100:
+	case 9:
 		return TEST;  // 仅供测试使用
 	case 0:
 		return EXIT;
@@ -477,6 +684,8 @@ SystemState userLogin(UserList& L)
 			if (CurrUser->memberLevel)
 			{
 				printf("%s用户登录成功！欢迎您，%s！%s\n", BOLD GREEN, CurrUser->username, RESET);
+				// 为用户创建购物车链表
+				initCartList(Cart_L);
 				Sleep(1000);
 				return USER_MENU;
 			}
@@ -520,8 +729,8 @@ SystemState userRegister(UserList& L)
 		Sleep(1000);
 		return REGISTER;
 	}
-	
-	printf("请输入密码: "); 
+
+	printf("请输入密码: ");
 	while (1)
 	{
 		c = _getch();
@@ -567,7 +776,7 @@ SystemState userRegister(UserList& L)
 		}
 	}
 	printf("\n");
-	
+
 	// 判断两次密码是否一致
 	if (strcmp(password, confirm_password) == 0)
 	{
@@ -703,6 +912,7 @@ SystemState userMenu()
 	system("cls");
 	printHeader();
 	printf("欢迎回来，%s！\n您的会员等级：%d，购物积分：%d\n", CurrUser->username, CurrUser->memberLevel, CurrUser->points);
+	printf("%s注意事项：退出登录后购物车将被清空！%s\n", RED, RESET);
 	printSeparator("-", WHITE, getConsoleWidth());
 
 	// 显示菜单选项
@@ -744,5 +954,60 @@ SystemState userMenu()
 		Sleep(1000);
 		return USER_MENU;
 		break;
+	}
+}
+
+// 显示商品列表
+SystemState viewProducts(ProductList& L)
+{
+	system("cls");
+	printHeader();
+	printProductList(L, 0);
+	printSeparator("-", WHITE, getConsoleWidth());
+	while (1)
+	{
+		int id = -1, num = -1, stock;
+		printf("输入商品 ID 进行购买（输入 0 返回用户菜单）：");
+		scanf("%d", &id);
+		if (id == 0)
+		{
+			return USER_MENU;
+		}
+		else if (id < 0)
+		{
+			printf("%s输入的商品 ID 不合法，请重新输入！%s\n", BOLD RED, RESET);
+			Sleep(1000);
+			continue;
+		}
+		else if (!productIDExist(L, id))
+		{
+			printf("%s商品不存在，请重新输入！%s\n", BOLD RED, RESET);
+		}
+		else
+		{
+			getProductStock(L, id, stock);
+			while (1)
+			{
+				printf("输入购买数量：");
+				scanf("%d", &num);
+				if (num <= 0)
+				{
+					printf("%s数量不得小于 1！请重新输入%s\n", BOLD RED, RESET);
+				}
+				else if (num > stock)
+				{
+					printf("%s库存不足！当前剩余 %d 件。请重新输入%s\n", BOLD RED, stock, RESET);
+				}
+				else
+				{
+					char name[50] = { 0 };
+					getProductName(L, id, name);
+					appendCartList(Cart_L, id, num);
+					printf("%s已添加 %d 件 %s 到购物车%s\n", BOLD GREEN, num, name, RESET);
+					break;
+				}
+			}
+		}
+
 	}
 }
