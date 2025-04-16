@@ -95,13 +95,14 @@ Status initProductList(ProductList& L);
 Status appendProductList(ProductList& L, int id, char* name, char* category1, char* category2, int stock, double price, double discount);
 Status readProductFromFile(const char* filename, ProductList& L);
 Status productIDExist(ProductList L, int id);
-Status getProductName(ProductList L, int id, char* name);
-Status getProductStock(ProductList L, int id, int& stock);
-Status printProductList(ProductList L, int is_admin);
+Status getProductInfo(ProductList L, int id, ProductList& info);
+Status searchProduct(ProductList L, const char* keyword, int& count);
+Status printProductList(ProductList L);
 
 Status initCartList(CartList& L);
 Status appendCartList(CartList L, int id, int quantity);
-
+Status findItemInCart(CartList L, int id, CartList& result);
+Status deleteFromCart(CartList& L, int id);
 
 SystemState mainMenu();
 
@@ -111,7 +112,8 @@ SystemState forgotPassword(UserList& L);
 
 SystemState userMenu();
 SystemState viewProducts(ProductList& L);
-SystemState searchProducts(ProductList& L);
+SystemState searchProductUI(ProductList& L);
+SystemState shoppingCart(ProductList Product_L);
 
 // 测试链表
 Status printUserList(UserList L)
@@ -168,7 +170,10 @@ int main()
 			currState = viewProducts(Product_L);
 			break;
 		case SEARCH_PRODUCTS:
-			currState = searchProducts(Product_L);
+			currState = searchProductUI(Product_L);
+			break;
+		case SHOPPING_CART:
+			currState = shoppingCart(Product_L);
 			break;
 		case TEST:
 			return OK;
@@ -461,8 +466,8 @@ Status productIDExist(ProductList L, int id)
 	return ERROR;
 }
 
-// 根据商品 ID 获取商品名称
-Status getProductName(ProductList L, int id, char* name)
+// 根据商品 ID 返回商品信息
+Status getProductInfo(ProductList L, int id, ProductList& info)
 {
 	if (L->next == NULL)
 	{
@@ -473,7 +478,7 @@ Status getProductName(ProductList L, int id, char* name)
 	{
 		if (p->id == id)
 		{
-			strcpy(name, p->name);
+			info = p;
 			return OK;
 		}
 		p = p->next;
@@ -481,28 +486,76 @@ Status getProductName(ProductList L, int id, char* name)
 	return ERROR;
 }
 
-// 获取商品库存
-Status getProductStock(ProductList L, int id, int& stock)
+Status searchProduct(ProductList L, const char* keyword, int& count)
 {
-	if (L->next == NULL)
-	{
-		return ERROR;
-	}
 	ProductList p = L->next;
+	int found = 0;
+	count = 0;
+
 	while (p)
 	{
-		if (p->id == id)
+		if (strstr(p->name, keyword) != NULL || strstr(p->category[0], keyword) != NULL || strstr(p->category[1], keyword) != NULL)
 		{
-			stock = p->stock;
-			return OK;
+			count++;
+			if (currUser != 0 && p->stock == 0)		// 普通用户不显示库存为 0 的商品
+			{
+				p = p->next;
+				continue;
+			}
+			else if (found == 0)		// 首次找到匹配商品时打印表头
+			{
+				printAligned("ID", 4);
+				printAligned("商品名称", 50);
+				printAligned("商品分类", 30);
+				printAligned("库存", 10);
+				printAligned("价格", 10);
+				printAligned("优惠价", 10);
+				printf("\n");
+				printSeparator("-", WHITE, getConsoleWidth());
+				found = 1;
+			}
+			char category[31];
+			strcpy(category, p->category[0]);
+			if (p->category[1][0] != '\0')	// 拼接商品分类
+			{
+				strcat(category, "->");
+				strcat(category, p->category[1]);
+			}
+			// 打印商品信息
+			printf("%-4d", p->id);
+			printAligned(p->name, 50);
+			printAligned(category, 30);
+			printf("%-10d", p->stock);
+			printf("%-10.2f", p->price);
+			if (p->discount != -1)
+			{
+				printf("%-10.2f", p->discount);
+			}
+			else
+			{
+				printf("%-10s", "无");
+			}
+			printf("\n");
+			count++;
 		}
 		p = p->next;
 	}
-	return ERROR;
+
+	if (!found)
+	{
+		printf("%s没有找到匹配的商品%s\n", RED, RESET);
+		return ERROR;
+	}
+	else
+	{
+		printSeparator("-", WHITE, getConsoleWidth());
+		printf("%s共找到 %d 件商品%s\n\n", GREEN, count, RESET);
+		return OK;
+	}
 }
 
 // 打印商品列表
-Status printProductList(ProductList L, int is_admin)
+Status printProductList(ProductList L)
 {
 	ProductList p = L->next;
 	char category[31];
@@ -511,22 +564,16 @@ Status printProductList(ProductList L, int is_admin)
 	printAligned("ID", 4);
 	printAligned("商品名称", 50);
 	printAligned("商品分类", 30);
-	if (is_admin)
-	{
-		printAligned("库存", 10);
-	}
+	printAligned("库存", 10);
 	printAligned("价格", 10);
 	printAligned("优惠价", 10);
 	printf("\n");
-	//printf("价格      优惠价\n");
 	printSeparator("-", WHITE, getConsoleWidth());
-
 
 	while (p)
 	{
-		if (!is_admin && p->stock == 0)
+		if (currUser != 0 && p->stock == 0)		// 普通用户不显示库存为 0 的商品
 		{
-			// 普通用户不显示库存为 0 的商品
 			p = p->next;
 			continue;
 		}
@@ -540,13 +587,7 @@ Status printProductList(ProductList L, int is_admin)
 		printf("%-4d", p->id);
 		printAligned(p->name, 50);
 		printAligned(category, 30);
-
-		if (is_admin)
-		{
-			// 管理员显示库存
-			printf("%-10d", p->stock);
-		}
-
+		printf("%-10d", p->stock);
 		printf("%-10.2f", p->price);
 		if (p->discount != -1)
 		{
@@ -554,7 +595,7 @@ Status printProductList(ProductList L, int is_admin)
 		}
 		else
 		{
-			printf("%-10s", "无优惠");
+			printf("%-10s", "无");
 		}
 		printf("\n");
 		count++;
@@ -590,6 +631,50 @@ Status appendCartList(CartList L, int id, int quantity)
 	}
 	p->next = newNode;
 	return OK;
+}
+
+// 查找购物车中是否存在指定商品，并返回该节点的指针
+Status findItemInCart(CartList L, int id, CartList& result)
+{
+	CartList p = L->next;
+	while (p)
+	{
+		if (p->id == id)
+		{
+			// 找到了匹配的商品
+			result = p;
+			return OK;
+		}
+		p = p->next;
+	}
+	// 没有找到匹配的商品
+	result = NULL;
+	return ERROR;
+}
+
+// 从购物车删除指定商品
+Status deleteFromCart(CartList& L, int id)
+{
+	if (L->next == NULL)
+	{
+		return ERROR;
+	}
+
+	CartList p = L;
+	CartList q = L->next;
+
+	while (q)
+	{
+		if (q->id == id)
+		{
+			p->next = q->next;
+			delete q;
+			return OK;
+		}
+		p = q;
+		q = q->next;
+	}
+	return ERROR;
 }
 
 // 主菜单
@@ -969,10 +1054,10 @@ SystemState viewProducts(ProductList& L)
 {
 	system("cls");
 	printHeader();
-	printProductList(L, 0);
+	printProductList(L);
 	while (1)
 	{
-		int id = -1, num = -1, stock;
+		int id = -1, num = -1;
 		printf("%s输入商品 ID 进行购买（输入 0 返回用户菜单）：%s", YELLOW, RESET);
 		scanf("%d", &id);
 		if (id == 0)
@@ -988,36 +1073,64 @@ SystemState viewProducts(ProductList& L)
 		else if (!productIDExist(L, id))
 		{
 			printf("%s商品不存在，请重新输入！%s\n", BOLD RED, RESET);
+			Sleep(1000);
 		}
 		else
 		{
-			getProductStock(L, id, stock);
+			ProductList p = NULL;
+			getProductInfo(L, id, p);
 			while (1)
 			{
-				printf("%s输入购买数量：%s", YELLOW, RESET);
+				printf("%s输入购买数量（输入 0 取消购买）：%s", YELLOW, RESET);
 				scanf("%d", &num);
-				if (num <= 0)
+				if(num == 0)
 				{
-					printf("%s数量不得小于 1！请重新输入%s\n", BOLD RED, RESET);
+					break;
 				}
-				else if (num > stock)
+				else if (num < 0)
 				{
-					printf("%s库存不足！当前剩余 %d 件。请重新输入%s\n", BOLD RED, stock, RESET);
+					printf("%s输入的数量不合法，请重新输入！%s\n", BOLD RED, RESET);
+				}
+				else if (p->stock == 0)
+				{
+					printf("%s商品已售罄！请重新输入！%s\n", BOLD RED, RESET);
+				}
+				else if (num > p->stock)
+				{
+					printf("%s库存不足！当前剩余 %d 件。请重新输入！%s\n", BOLD RED, p->stock, RESET);
 				}
 				else
 				{
-					char name[50] = { 0 };
-					getProductName(L, id, name);
-					appendCartList(Cart_L, id, num);
-					printf("%s已添加 %d 件 %s 到购物车%s\n", BOLD GREEN, num, name, RESET);
+					// 处理购物车中的重复商品
+					CartList existingItem = NULL;
+					if (findItemInCart(Cart_L, id, existingItem) == OK)
+					{
+						// 购物车中已存在该商品，增加数量
+						int totalQuantity = existingItem->quantity + num;
+						// 再次检查总数量是否超过库存
+						if (totalQuantity > p->stock)
+						{
+							printf("%s添加后总数量超过库存！当前剩余 %d 件，购物车已有 %d 件。请重新输入%s\n", BOLD RED, p->stock, existingItem->quantity, RESET);
+							continue;
+						}
+						existingItem->quantity = totalQuantity;
+						printf("%s已增加 %d 件 %s 到购物车，购物车中现在共有 %d 件%s\n\n", BOLD GREEN, num, p->name, totalQuantity, RESET);
+					}
+					else
+					{
+						// 购物车中不存在该商品，添加新条目
+						appendCartList(Cart_L, id, num);
+						printf("%s已添加 %d 件 %s 到购物车%s\n\n", BOLD GREEN, num, p->name, RESET);
+					}
 					break;
 				}
+				printf("\n");
 			}
 		}
 	}
 }
 
-SystemState searchProducts(ProductList& L)
+SystemState searchProductUI(ProductList& L)
 {
 	system("cls");
 	printHeader();
@@ -1033,64 +1146,131 @@ SystemState searchProducts(ProductList& L)
 			return USER_MENU;
 		}
 
-		ProductList p = L->next;
-		int found = 0, count = 0;
+		int count = 0;
+		searchProduct(L, keyword, count);
+	}
+}
 
-		// 遍历商品列表，查找匹配的商品
-		while (p)
+// 显示购物车页面
+SystemState shoppingCart(ProductList Product_L)
+{
+	while (1)
+	{
+		system("cls");
+		printHeader();
+		printCentered("购物车", WHITE, getConsoleWidth());
+		printf("\n");
+
+		CartList cart = Cart_L->next;
+		if (cart == NULL)
 		{
-			// 将一级分类与二级分类（如果有）连接起来，便于搜索
-			char category[31];
-			strcpy(category, p->category[0]);
-			if (p->category[1][0] != '\0')
-			{
-				strcat(category, "->");
-				strcat(category, p->category[1]);
-			}
-
-			// 模糊搜索商品名称和分类
-			if (strstr(p->name, keyword) || strstr(category, keyword))
-			{
-				if (!found)
-				{
-					printf("\n");
-					// 打印商品标题
-					printAligned("ID", 4);
-					printAligned("商品名称", 50);
-					printAligned("商品分类", 30);
-					printAligned("价格", 10);
-					printAligned("优惠价", 10);
-					printf("\n");
-					printSeparator("-", WHITE, getConsoleWidth());
-					found = 1;
-				}
-				// 打印商品信息
-				printf("%-4d", p->id);
-				printAligned(p->name, 50);
-				printAligned(category, 30);
-				printf("%-10.2f", p->price);
-				if (p->discount != -1)
-				{
-					printf("%-10.2f", p->discount);
-				}
-				else
-				{
-					printf("%-10s", "无优惠");
-				}
-				count++;
-				printf("\n");
-			}
-			p = p->next;
+			printf("%s购物车空空如也！%s\n正在返回用户菜单", BOLD YELLOW, RESET);
+			Sleep(1000);
+			return USER_MENU;
 		}
-		// 如果没有找到匹配的商品
-		if (!found)
+
+		// 显示表头
+		printAligned("ID", 4);
+		printAligned("商品名称", 50);
+		printAligned("数量", 10);
+		printAligned("单价", 10);
+		printAligned("小计", 10);
+		printf("\n");
+		printSeparator("-", WHITE, getConsoleWidth());
+
+		double total = 0.0;
+		while (cart)
 		{
-			printf("%s没有找到匹配的商品！%s\n\n", BOLD RED, RESET);
+			double price = 0.0;
+			ProductList p = NULL;
+
+			getProductInfo(Product_L, cart->id, p);
+			price = p->discount == -1 ? p->price : p->discount;
+
+			printf("%-4d", cart->id);
+			printAligned(p->name, 50);
+			printf("%-10d", cart->quantity);
+			printf("%-10.2f", price);
+			printf("%-10.2f\n", price * cart->quantity);
+
+			total += price * cart->quantity;
+			cart = cart->next;
+		}
+		printSeparator("-", WHITE, getConsoleWidth());
+		printf("总计：%.2f 元\n%s价格仅供参考，请以结算页面实际显示为准！%s\n\n", total, BOLD YELLOW, RESET);
+
+		// 显示操作菜单
+		printf("请选择要进行的操作：\n");
+		printf("1. 修改商品数量\n");
+		printf("2. 删除商品\n");
+		printf("0. 返回用户菜单\n");
+		printf("%s请输入操作选项：%s", YELLOW, RESET);
+
+		int choice;
+		scanf("%d", &choice);
+
+		if (choice == 0)
+		{
+			return USER_MENU;
+		}
+		else if (choice == 1)
+		{
+			printf("%s请输入要修改的商品 ID：%s", YELLOW, RESET);
+			int id;
+			scanf("%d", &id);
+
+			CartList item = NULL;
+			if (findItemInCart(Cart_L, id, item) == OK)
+			{
+				ProductList p = NULL;
+				getProductInfo(Product_L, id, p);
+				printf("当前数量：%d\n", item->quantity);
+				printf("%s请输入新的数量（输入 0 取消修改）：%s", YELLOW, RESET);
+				int newQuantity;
+				scanf("%d", &newQuantity);
+
+				if (newQuantity > 0)
+				{
+					if (newQuantity > p->stock)
+					{
+						printf("%s数量超过库存！当前库存：%d%s\n", BOLD RED, p->stock, RESET);
+						Sleep(1500);
+					}
+					else
+					{
+						item->quantity = newQuantity;
+						printf("%s修改成功！%s\n", BOLD GREEN, RESET);
+						Sleep(1000);
+					}
+				}
+			}
+			else
+			{
+				printf("%s购物车中不存在该商品！%s\n", BOLD RED, RESET);
+				Sleep(1500);
+			}
+		}
+		else if (choice == 2)
+		{
+			printf("请输入要删除的商品 ID：");
+			int id;
+			scanf("%d", &id);
+
+			if (deleteFromCart(Cart_L, id) == OK)
+			{
+				printf("%s删除成功！%s\n", BOLD GREEN, RESET);
+				Sleep(1000);
+			}
+			else
+			{
+				printf("%s购物车中不存在该商品！%s\n", BOLD RED, RESET);
+				Sleep(1500);
+			}
 		}
 		else
 		{
-			printSeparator("-", WHITE, getConsoleWidth());
-			printf("%s共找到 %d 件商品！%s\n\n", BOLD GREEN, count, RESET);
+			printf("%s无效的操作选项！%s\n", BOLD RED, RESET);
+			Sleep(1500);
 		}
 	}
 }
