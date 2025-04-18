@@ -42,6 +42,10 @@ typedef enum
 	SHOPPING_CART,
 	CHECKOUT,
 	SHOPPING_HISTORY,
+	PRODUCT_MANAGEMENT,
+	USER_MANAGEMENT,
+	DISCOUNT_MANAGEMENT,
+	SALES_REPORT,
 	EXIT,
 	TEST
 }SystemState;
@@ -115,6 +119,8 @@ SystemState viewProducts(ProductList& L);
 SystemState searchProductUI(ProductList& L);
 SystemState shoppingCart(ProductList Product_L);
 
+SystemState adminMenu();
+
 // 测试链表
 Status printUserList(UserList L)
 {
@@ -175,6 +181,9 @@ int main()
 		case SHOPPING_CART:
 			currState = shoppingCart(Product_L);
 			break;
+		case ADMIN_MENU:
+			currState = adminMenu();
+			break;
 		case TEST:
 			return OK;
 		}
@@ -182,8 +191,6 @@ int main()
 
 	return OK;
 }
-
-
 
 // 打印一行分隔符
 void printSeparator(const char* separator_char, const char* color, int width)
@@ -420,7 +427,7 @@ Status readProductFromFile(const char* filename, ProductList& L)
 	double price, discount;
 	char category_t[31], category1[15], category2[15];
 
-	while (fscanf(fp, "%d %s %s %d %lf  %lf", &id, name, category_t, &stock, &price, &discount) != EOF)
+	while (fscanf(fp, "%d %s %s %d %lf %lf", &id, name, category_t, &stock, &price, &discount) != EOF)
 	{
 		// 将商品名称中的逗号替换为空格
 		for (int i = 0; name[i] != '\0'; i++)
@@ -997,13 +1004,12 @@ SystemState forgotPassword(UserList& L)
 // 显示用户菜单
 SystemState userMenu()
 {
-	UserList CurrUser = currUser;
 	int choice = -1;
 
 	// 显示欢迎信息
 	system("cls");
 	printHeader();
-	printf("欢迎回来，%s！\n您的会员等级：%d，购物积分：%d\n", CurrUser->username, CurrUser->memberLevel, CurrUser->points);
+	printf("欢迎回来，%s！\n您的会员等级：%d，购物积分：%d\n", currUser->username, currUser->memberLevel, currUser->points);
 	printf("%s注意事项：退出登录后购物车将被清空！%s\n", RED, RESET);
 	printSeparator("-", WHITE, getConsoleWidth());
 
@@ -1272,5 +1278,48 @@ SystemState shoppingCart(ProductList Product_L)
 			printf("%s无效的操作选项！%s\n", BOLD RED, RESET);
 			Sleep(1500);
 		}
+	}
+}
+
+SystemState adminMenu()
+{
+	system("cls");
+	printHeader();
+	printCentered("管理员菜单", WHITE, getConsoleWidth());
+
+	int choice = -1;
+	printf("请选择要进行的操作：\n");
+	printf("1. 商品管理\n");
+	printf("2. 用户列表\n");
+	printf("3. 优惠管理\n");
+	printf("4. 销售统计\n");
+	printf("0. 退出登录\n");
+	printf("%s输入序号进行对应操作：%s", YELLOW, RESET);
+	scanf("%d", &choice);
+
+	switch (choice)
+	{
+	case 1:
+		return PRODUCT_MANAGEMENT;
+		break;
+	case 2:
+		return USER_MANAGEMENT;
+		break;
+	case 3:
+		return DISCOUNT_MANAGEMENT;
+		break;
+	case 4:
+		return SALES_REPORT;
+		break;
+	case 0:
+		currUser = NULL;
+		printf("%s已退出登录！正在返回主菜单%s\n", BOLD GREEN, RESET);
+		return MAIN_MENU;
+		break;
+	default:
+		printf("%s输入的序号不存在，请重新输入！%s\n", BOLD RED, RESET);
+		Sleep(1000);
+		return ADMIN_MENU;
+		break;
 	}
 }
