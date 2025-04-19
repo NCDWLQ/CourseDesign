@@ -102,7 +102,7 @@ Status productIDExist(ProductList L, int id);
 Status getProductInfo(ProductList L, int id, ProductList& info);
 Status searchProduct(ProductList L, const char* keyword, int& count);
 Status printProductList(ProductList L);
-
+Status addProduct(ProductList& L);
 Status initCartList(CartList& L);
 Status appendCartList(CartList L, int id, int quantity);
 Status findItemInCart(CartList L, int id, CartList& result);
@@ -120,6 +120,7 @@ SystemState searchProductUI(ProductList& L);
 SystemState shoppingCart(ProductList Product_L);
 
 SystemState adminMenu();
+SystemState productManagement(ProductList& Product_L);
 
 // 测试链表
 Status printUserList(UserList L)
@@ -172,6 +173,9 @@ int main()
 		case USER_MENU:
 			currState = userMenu();
 			break;
+		case ADMIN_MENU:
+			currState = adminMenu();
+			break;
 		case VIEW_PRODUCTS:
 			currState = viewProducts(Product_L);
 			break;
@@ -181,8 +185,23 @@ int main()
 		case SHOPPING_CART:
 			currState = shoppingCart(Product_L);
 			break;
-		case ADMIN_MENU:
-			currState = adminMenu();
+		case CHECKOUT:
+			// 结账逻辑
+			break;
+		case SHOPPING_HISTORY:
+			// 购物历史逻辑
+			break;
+		case PRODUCT_MANAGEMENT:
+			currState = productManagement(Product_L);
+			break;
+		case USER_MANAGEMENT:
+			// 用户管理逻辑
+			break;
+		case DISCOUNT_MANAGEMENT:
+			// 优惠管理逻辑
+			break;
+		case SALES_REPORT:
+			// 销售报告逻辑
 			break;
 		case TEST:
 			return OK;
@@ -503,7 +522,6 @@ Status searchProduct(ProductList L, const char* keyword, int& count)
 	{
 		if (strstr(p->name, keyword) != NULL || strstr(p->category[0], keyword) != NULL || strstr(p->category[1], keyword) != NULL)
 		{
-			count++;
 			if (currUser != 0 && p->stock == 0)		// 普通用户不显示库存为 0 的商品
 			{
 				p = p->next;
@@ -550,7 +568,7 @@ Status searchProduct(ProductList L, const char* keyword, int& count)
 
 	if (!found)
 	{
-		printf("%s没有找到匹配的商品%s\n", RED, RESET);
+		printf("%s没有找到匹配的商品%s\n\n", RED, RESET);
 		return ERROR;
 	}
 	else
@@ -579,10 +597,17 @@ Status printProductList(ProductList L)
 
 	while (p)
 	{
-		if (currUser != 0 && p->stock == 0)		// 普通用户不显示库存为 0 的商品
+		if (p->stock == 0)		// 普通用户不显示库存为 0 的商品
 		{
-			p = p->next;
-			continue;
+			if (currUser->memberLevel != 0)
+			{
+				p = p->next;
+				continue;
+			}
+			else
+			{
+				printf("%s", YELLOW);
+			}
 		}
 		strcpy(category, p->category[0]);
 		if (p->category[1][0] != '\0')
@@ -604,12 +629,109 @@ Status printProductList(ProductList L)
 		{
 			printf("%-10s", "无");
 		}
-		printf("\n");
+		printf("%s\n", RESET);
 		count++;
 		p = p->next;
 	}
 	printSeparator("-", WHITE, getConsoleWidth());
 	printf("%s共找到 %d 件商品%s\n\n", GREEN, count, RESET);
+	return OK;
+}
+
+Status addProduct(ProductList& L)
+{
+	int max_id = 0, id, stock;
+	double price, discount;
+	char name[50], category1[15], category2[15];
+	ProductList p = L->next;
+	while (p)
+	{
+		if (p->id > max_id)
+		{
+			max_id = p->id;
+		}
+		p = p->next;
+	}
+	id = max_id + 1;	// 新商品 ID 从最大 ID + 1 开始
+	while (1)
+	{
+		printf("商品名称: ");
+		scanf(" %[^\n]", name);		// 读取包含空格的字符串
+		if (strlen(name) == 0)		// 判断是否为空
+		{
+			printf("%s商品名称不能为空，请重新输入！%s\n", BOLD RED, RESET);
+			continue;
+		}
+		else
+		{
+			break;
+		}
+	}
+	while (1)
+	{
+		printf("商品一级分类（必填）: ");
+		scanf("%s", category1);
+		if (strlen(category1) == 0)
+		{
+			printf("%s商品一级分类不能为空，请重新输入！%s\n", BOLD RED, RESET);
+			continue;
+		}
+		else
+		{
+			break;
+		}
+	}
+	// 清除输入缓冲区
+	getchar();
+	printf("商品二级分类（若无则留空）: ");
+	fgets(category2, sizeof(category2), stdin);
+	category2[strcspn(category2, "\n")] = 0;	// 去除末尾换行符
+	if (strlen(category2) == 0)
+	{
+		category2[0] = '\0';	// 如果没有输入二级分类，则将其设置为空字符串
+	}
+	while (1)
+	{
+		printf("商品数量: ");
+		scanf("%d", &stock);
+		if (stock <= 0)
+		{
+			printf("%s商品数量必须大于 0，请重新输入！%s\n", BOLD RED, RESET);
+		}
+		else
+		{
+			break;
+		}
+	}
+	while (1)
+	{
+		printf("商品价格: ");
+		scanf("%lf", &price);
+		if (price <= 0)
+		{
+			printf("%s商品价格必须大于 0，请重新输入！%s\n", BOLD RED, RESET);
+		}
+		else
+		{
+			break;
+		}
+	}
+	while (1)
+	{
+		printf("商品优惠价（若无优惠则输入 -1）: ");
+		scanf("%lf", &discount);
+		if (discount == -1 || discount > 0 && discount < price)
+		{
+			break;
+		}
+		else
+		{
+			printf("%s商品优惠价必须小于商品价格，请重新输入！%s\n", BOLD RED, RESET);
+		}
+	}
+	// 添加商品到链表
+	appendProductList(L, id, name, category1, category2, stock, price, discount);
+	printf("%s商品 %s 添加成功！ID：%d%s\n\n", GREEN, name, id, RESET);
 	return OK;
 }
 
@@ -1191,7 +1313,7 @@ SystemState shoppingCart(ProductList Product_L)
 			ProductList p = NULL;
 
 			getProductInfo(Product_L, cart->id, p);
-			price = p->discount == -1 ? p->price : p->discount;
+			price = p->discount = -1 ? p->price : p->discount;
 
 			printf("%-4d", cart->id);
 			printAligned(p->name, 50);
@@ -1285,7 +1407,8 @@ SystemState adminMenu()
 {
 	system("cls");
 	printHeader();
-	printCentered("管理员菜单", WHITE, getConsoleWidth());
+	printf("欢迎回来，管理员 %s！\n", currUser->username);
+	printSeparator("-", WHITE, getConsoleWidth());
 
 	int choice = -1;
 	printf("请选择要进行的操作：\n");
@@ -1321,5 +1444,39 @@ SystemState adminMenu()
 		Sleep(1000);
 		return ADMIN_MENU;
 		break;
+	}
+}
+
+SystemState productManagement(ProductList& Product_L)
+{
+	system("cls");
+	printHeader();
+	printCentered("商品管理", WHITE, getConsoleWidth());
+	printSeparator("-", WHITE, getConsoleWidth());
+	printProductList(Product_L);
+	while (1)
+	{
+		printf("请选择要进行的操作：\n");
+		printf("1. 添加商品\n");
+		printf("2. 修改商品\n");
+		printf("3. 删除商品\n");
+		printf("4. 搜索商品\n");
+		printf("0. 返回管理员菜单\n");
+		printf("%s输入序号进行对应操作：%s", YELLOW, RESET);
+		int choice = -1;
+		scanf("%d", &choice);
+		switch (choice)
+		{
+		case 1:
+			// 添加商品
+			addProduct(Product_L);
+			break;
+		case 0:
+			return ADMIN_MENU;
+		default:
+			printf("%s输入的序号不存在，请重新输入！%s\n", BOLD RED, RESET);
+			Sleep(1000);
+			break;
+		}
 	}
 }
