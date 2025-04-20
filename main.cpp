@@ -98,11 +98,14 @@ Status updatePassword(UserList L, char* username, char* newPassword);
 Status initProductList(ProductList& L);
 Status appendProductList(ProductList& L, int id, char* name, char* category1, char* category2, int stock, double price, double discount);
 Status readProductFromFile(const char* filename, ProductList& L);
+Status saveProductToFile(const char* filename, ProductList L);
 Status productIDExist(ProductList L, int id);
 Status getProductInfo(ProductList L, int id, ProductList& info);
 Status searchProduct(ProductList L, const char* keyword, int& count);
 Status printProductList(ProductList L);
 Status addProduct(ProductList& L);
+Status updateProduct(ProductList& L);
+
 Status initCartList(CartList& L);
 Status appendCartList(CartList L, int id, int quantity);
 Status findItemInCart(CartList L, int id, CartList& result);
@@ -121,18 +124,6 @@ SystemState shoppingCart(ProductList Product_L);
 
 SystemState adminMenu();
 SystemState productManagement(ProductList& Product_L);
-
-// 测试链表
-Status printUserList(UserList L)
-{
-	UserList p = L->next;
-	while (p)
-	{
-		printf("%-20s %-20s %d %d\n", p->username, p->password, p->memberLevel, p->points);
-		p = p->next;
-	}
-	return OK;
-}
 
 // 定义全局变量，指示当前用户
 UserList currUser = NULL;
@@ -477,6 +468,46 @@ Status readProductFromFile(const char* filename, ProductList& L)
 	return OK;
 }
 
+Status saveProductToFile(const char* filename, ProductList L)
+{
+	FILE* fp;
+	ProductList p = L->next;
+
+	if ((fp = fopen(filename, "w")) == NULL)
+	{
+		return ERROR;
+	}
+
+	while (p)	// 遍历商品列表，逐个写入文件
+	{
+		// 将商品名称中的空格替换为逗号
+		char name[50];
+		strcpy(name, p->name);
+		for (int i = 0; name[i] != '\0'; i++)
+		{
+			if (name[i] == ' ')
+			{
+				name[i] = ',';
+			}
+		}
+
+		// 拼接商品分类，格式为 "一级分类@二级分类"（如果二级分类为空，则只写一级分类）
+		char category_t[31];
+		strcpy(category_t, p->category[0]);
+		if (p->category[1][0] != '\0')
+		{
+			strcat(category_t, "@");
+			strcat(category_t, p->category[1]);
+		}
+
+		// 写入文件，格式：id name category_t stock price discount
+		fprintf(fp, "%d %s %s %d %.2f %.2f\n", p->id, name, category_t, p->stock, p->price, p->discount);
+		p = p->next;
+	}
+	fclose(fp);
+	return OK;
+}
+
 // 判断商品 ID 是否存在
 Status productIDExist(ProductList L, int id)
 {
@@ -584,7 +615,7 @@ Status printProductList(ProductList L)
 {
 	ProductList p = L->next;
 	char category[31];
-	int count = 0;
+	int count = 0, sold_out = 0;
 	
 	printAligned("ID", 4);
 	printAligned("商品名称", 50);
@@ -599,6 +630,7 @@ Status printProductList(ProductList L)
 	{
 		if (p->stock == 0)		// 普通用户不显示库存为 0 的商品
 		{
+			sold_out++;
 			if (currUser->memberLevel != 0)
 			{
 				p = p->next;
@@ -634,7 +666,12 @@ Status printProductList(ProductList L)
 		p = p->next;
 	}
 	printSeparator("-", WHITE, getConsoleWidth());
-	printf("%s共找到 %d 件商品%s\n\n", GREEN, count, RESET);
+	printf("%s共找到 %d 件商品%s", GREEN, count, RESET);
+	if (currUser->memberLevel == 0)
+	{
+		printf("，其中 %d 件商品已售罄，%s请及时补货！%s\n", sold_out, RED, RESET);
+	}
+	printf("\n\n");
 	return OK;
 }
 
@@ -726,12 +763,135 @@ Status addProduct(ProductList& L)
 		}
 		else
 		{
-			printf("%s商品优惠价必须小于商品价格，请重新输入！%s\n", BOLD RED, RESET);
+			printf("%s优惠价必须介于 0 和商品价格之间，请重新输入！%s\n", BOLD RED, RESET);
 		}
 	}
 	// 添加商品到链表
 	appendProductList(L, id, name, category1, category2, stock, price, discount);
 	printf("%s商品 %s 添加成功！ID：%d%s\n\n", GREEN, name, id, RESET);
+	return OK;
+}
+
+// 修改商品信息
+Status updateProduct(ProductList& L)
+{
+	int id;
+	printf("请输入要修改的商品 ID（输入 0 取消修改）:");
+	scanf("%d", &id);
+	if (id == 0)
+	{
+		return OK;
+	}
+	
+	ProductList info;
+	getProductInfo(L, id, info);
+	if (info == NULL)
+	{
+		printf("%s商品 ID 不存在！%s\n", BOLD RED, RESET);
+		return ERROR;
+	}
+	printf("选中的商品：%s%s%s\n\n", YELLOW, info->name, RESET);
+	printf("选择要修改的信息：\n");
+	printf("1. 商品名称\n");
+	printf("2. 一级分类\n");
+	printf("3. 二级分类\n");
+	printf("4. 库存\n");
+	printf("5. 价格\n");
+	printf("6. 优惠价\n");
+	printf("0. 取消修改\n");
+	printf("%s请输入序号:%s ", YELLOW, RESET);
+	int choice;
+	scanf("%d", &choice);
+	printf("\n");
+	switch (choice)
+	{
+	case 1:
+	{
+		printf("当前商品名称: %s\n", info->name);
+		printf("请输入新的商品名称: ");
+		char name[50];
+		scanf(" %[^\n]", name);
+		strcpy(info->name, name);
+		printf("%s商品名已修改为 %s%s\n\n", BOLD GREEN, info->name, RESET);
+		break;
+	}
+	case 2:
+	{
+		printf("当前一级分类: %s\n", info->category[0]);
+		printf("请输入新的一级分类: ");
+		char category1[15];
+		scanf("%s", category1);
+		strcpy(info->category[0], category1);
+		printf("%s一级分类已修改为 %s%s\n\n", BOLD GREEN, info->category[0], RESET);
+		break;
+	}
+	case 3:
+	{
+		printf("当前二级分类: %s\n", strlen(info->category[1]) == 0 ? "无" : info->category[1]);
+		printf("请输入新的二级分类（留空表示无）: ");
+		char category2[15];
+		fgets(category2, sizeof(category2), stdin);
+		category2[strcspn(category2, "\n")] = 0; // 去除末尾换行符
+		if (strlen(category2) == 0) {
+			info->category[1][0] = '\0'; // 设置为空字符串
+			printf("%s二级分类已清空%s\n\n", BOLD GREEN, RESET);
+		}
+		else {
+			strcpy(info->category[1], category2);
+			printf("%s二级分类已修改为 %s%s\n\n", BOLD GREEN, info->category[1], RESET);
+		}
+		break;
+	}
+	case 4:
+	{
+		printf("当前库存: %d\n", info->stock);
+		printf("请输入新的库存: ");
+		int stock;
+		scanf("%d", &stock);
+		info->stock = stock;
+		printf("%s库存已修改为 %d%s\n\n", BOLD GREEN, info->stock, RESET);
+		break;
+	}
+	case 5:
+	{
+		printf("当前价格: %.2f\n", info->price);
+		printf("请输入新的价格: ");
+		double price;
+		scanf("%lf", &price);
+		info->price = price;
+		printf("%s价格已修改为 %.2f%s\n\n", BOLD GREEN, info->price, RESET);
+		break;
+	}
+	case 6:
+	{
+		printf("当前优惠价: %.2f\n", info->discount);
+		printf("请输入新的优惠价（输入 -1 表示无优惠）: ");
+		double discount;
+		scanf("%lf", &discount);
+		if (discount == -1)
+		{
+			info->discount = -1;
+			printf("%s优惠已清空%s\n\n", BOLD GREEN, RESET);
+		}
+		else
+		{
+			info->discount = discount;
+			printf("%s优惠价已修改为 %.2f%s\n\n", BOLD GREEN, info->discount, RESET);
+		}
+		break;
+	}
+	case 0:
+	{
+		printf("\n");
+		break;
+	}
+	default:
+	{
+		printf("%s输入的序号不存在！%s\n\n", BOLD RED, RESET);
+		return ERROR;
+	}
+	}
+
 	return OK;
 }
 
@@ -1465,18 +1625,24 @@ SystemState productManagement(ProductList& Product_L)
 		printf("%s输入序号进行对应操作：%s", YELLOW, RESET);
 		int choice = -1;
 		scanf("%d", &choice);
+		printf("\n");
 		switch (choice)
 		{
 		case 1:
-			// 添加商品
 			addProduct(Product_L);
+			saveProductToFile(PRODUCT_FILE, Product_L);
+			break;
+		case 2:
+			if(updateProduct(Product_L) == OK)
+			{
+				saveProductToFile(PRODUCT_FILE, Product_L);
+			}
 			break;
 		case 0:
 			return ADMIN_MENU;
 		default:
-			printf("%s输入的序号不存在，请重新输入！%s\n", BOLD RED, RESET);
+			printf("%s输入的序号不存在，请重新输入！%s\n\n", BOLD RED, RESET);
 			Sleep(1000);
-			break;
 		}
 	}
 }
