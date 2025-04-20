@@ -94,6 +94,7 @@ Status readUserFromFile(const char* filename, UserList& L);
 Status saveUserToFile(const char* filename, UserList L);
 Status userExist(UserList L, char* username);
 Status updatePassword(UserList L, char* username, char* newPassword);
+Status printUserList(UserList L);
 
 Status initProductList(ProductList& L);
 Status appendProductList(ProductList& L, int id, char* name, char* category1, char* category2, int stock, double price, double discount);
@@ -124,6 +125,7 @@ SystemState shoppingCart(ProductList Product_L);
 
 SystemState adminMenu();
 SystemState productManagement(ProductList& Product_L);
+SystemState userManagement(UserList& User_L);
 
 // 定义全局变量，指示当前用户
 UserList currUser = NULL;
@@ -186,7 +188,7 @@ int main()
 			currState = productManagement(Product_L);
 			break;
 		case USER_MANAGEMENT:
-			// 用户管理逻辑
+			currState = userManagement(User_L);
 			break;
 		case DISCOUNT_MANAGEMENT:
 			// 优惠管理逻辑
@@ -385,6 +387,40 @@ Status updatePassword(UserList L, char* username, char* newPassword)
 		p = p->next;
 	}
 	return ERROR;
+}
+
+// 打印用户列表
+Status printUserList(UserList L)
+{
+	UserList p = L->next;
+	if (p == NULL)
+	{
+		printf("用户列表为空\n");
+		return ERROR;
+	}
+	printAligned("用户名", 20);
+	printAligned("会员等级", 10);
+	printAligned("积分", 10);
+	printf("\n");
+	printSeparator("-", WHITE, getConsoleWidth());
+
+	int count = 0;
+	while (p)
+	{
+		if (p->memberLevel == 0)	// 管理员不显示
+		{
+			p = p->next;
+			continue;
+		}
+		printf("%-20s", p->username);
+		printf("%-10d", p->memberLevel);
+		printf("%-10d", p->points);
+		printf("\n");
+		p = p->next;
+		count++;
+	}
+	printSeparator("-", WHITE, getConsoleWidth());
+	printf("共 %d 位用户\n", count);
 }
 
 // 初始化 ProductList
@@ -1565,9 +1601,13 @@ SystemState shoppingCart(ProductList Product_L)
 
 SystemState adminMenu()
 {
+	time_t now = time(0);
+	tm* ltm = localtime(&now);
+
 	system("cls");
 	printHeader();
 	printf("欢迎回来，管理员 %s！\n", currUser->username);
+	printf("当前系统时间：%04d-%02d-%02d %02d:%02d:%02d\n", 1900 + ltm->tm_year, 1 + ltm->tm_mon, ltm->tm_mday, ltm->tm_hour, ltm->tm_min, ltm->tm_sec);
 	printSeparator("-", WHITE, getConsoleWidth());
 
 	int choice = -1;
@@ -1645,4 +1685,18 @@ SystemState productManagement(ProductList& Product_L)
 			Sleep(1000);
 		}
 	}
+}
+
+SystemState userManagement(UserList& User_L)
+{
+	system("cls");
+	printHeader();
+	printCentered("用户列表", WHITE, getConsoleWidth());
+	printUserList(User_L);
+
+	// 按任意键返回
+	printf("%s按任意键返回管理员菜单%s\n", YELLOW, RESET);
+	_getch();
+
+	return ADMIN_MENU;
 }
