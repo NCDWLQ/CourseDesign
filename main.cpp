@@ -98,6 +98,7 @@ Status printUserList(UserList L);
 
 Status initProductList(ProductList& L);
 Status appendProductList(ProductList& L, int id, char* name, char* category1, char* category2, int stock, double price, double discount);
+Status deleteProductNode(ProductList& L, int id);
 Status readProductFromFile(const char* filename, ProductList& L);
 Status saveProductToFile(const char* filename, ProductList L);
 Status productIDExist(ProductList L, int id);
@@ -106,6 +107,7 @@ Status searchProduct(ProductList L, const char* keyword, int& count);
 Status printProductList(ProductList L);
 Status addProduct(ProductList& L);
 Status updateProduct(ProductList& L);
+Status deleteProduct(ProductList& L);
 
 Status initCartList(CartList& L);
 Status appendCartList(CartList L, int id, int quantity);
@@ -457,6 +459,25 @@ Status appendProductList(ProductList& L, int id, char* name, char* category1, ch
 	p->next = newNode;
 
 	return OK;
+}
+
+// 从 ProductList 中删除一个节点
+Status deleteProductNode(ProductList& L, int id)
+{
+	ProductList p = L->next;
+	ProductList prev = L;
+	while (p)
+	{
+		if (p->id == id)
+		{
+			prev->next = p->next;
+			delete p;
+			return OK;
+		}
+		prev = p;
+		p = p->next;
+	}
+	return ERROR; // 商品 ID 不存在
 }
 
 // 从文件中读取 ProductList
@@ -928,6 +949,40 @@ Status updateProduct(ProductList& L)
 	}
 	}
 
+	return OK;
+}
+
+// 删除商品
+Status deleteProduct(ProductList& L)
+{
+	int id;
+	printf("请输入要删除的商品 ID（输入 0 取消操作）:");
+	scanf("%d", &id);
+	if (id == 0)
+	{
+		return ERROR;
+	}
+	ProductList info;
+	char name[50];
+	if (getProductInfo(L, id, info) == ERROR)
+	{
+		printf("%s商品 ID 不存在！%s\n\n", BOLD RED, RESET);
+		return ERROR;
+	}
+	strcpy(name, info->name);
+	printf("选中的商品：%s%s%s\n", YELLOW, name, RESET);
+	int choice;
+	printf("确认删除输入 1，取消删除输入 0: ");
+	scanf("%d", &choice);
+	if (choice == 1)
+	{
+		deleteProductNode(L, id);
+		printf("%s商品 %s 删除成功！%s\n\n", GREEN, name, RESET);
+	}
+	else
+	{
+		printf("%s取消删除商品%s\n\n", BOLD YELLOW, RESET);
+	}
 	return OK;
 }
 
@@ -1674,6 +1729,12 @@ SystemState productManagement(ProductList& Product_L)
 			break;
 		case 2:
 			if(updateProduct(Product_L) == OK)
+			{
+				saveProductToFile(PRODUCT_FILE, Product_L);
+			}
+			break;
+		case 3:
+			if (deleteProduct(Product_L) == OK)
 			{
 				saveProductToFile(PRODUCT_FILE, Product_L);
 			}
