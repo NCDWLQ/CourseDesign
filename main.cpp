@@ -85,9 +85,10 @@ typedef struct ShoppingCart
 typedef struct Discount
 {
 	int id;
-	unsigned int categoryHash;	// 分类的散列值
-	double discountRate;			// 折扣百分比
-	time_t endDate;			// 结束日期
+	char category[2][15];		// 优惠商品类别
+	double discountRate;		// 折扣百分比
+	double minAmount;			// 最低消费金额
+	time_t endDate;				// 结束日期
 	struct Discount* next;
 } DiscountNode, * DiscountList;
 
@@ -98,8 +99,6 @@ void printAligned(const char* str, int target_width);
 
 int getDisplayWidth(const char* str);
 int getConsoleWidth();
-
-unsigned int hashFunction(const char* str);
 
 Status initUserList(UserList& L);
 Status appendUserList(UserList& L, char* username, char* password, int memberLevel, int points);
@@ -128,7 +127,7 @@ Status findItemInCart(CartList L, int id, CartList& result);
 Status deleteFromCart(CartList& L, int id);
 
 Status initDiscountList(DiscountList& L);
-Status addDiscount(DiscountList& L, int id, unsigned int categoryHash, double discountRate, time_t endDate);
+Status addDiscount(DiscountList& L, int id, char category1[15], char category2[15], double discountRate, double minAmount, time_t endDate);
 Status readDiscountFromFile(const char* filename, DiscountList& L);
 
 SystemState mainMenu();
@@ -145,6 +144,7 @@ SystemState shoppingCart(ProductList Product_L);
 SystemState adminMenu();
 SystemState productManagement(ProductList& Product_L);
 SystemState userManagement(UserList& User_L);
+SystemState discountManagement(DiscountList& Discount_L);
 
 // 定义全局变量，指示当前用户
 UserList currUser = NULL;
@@ -306,18 +306,6 @@ int getConsoleWidth() {
 	}
 
 	return width;
-}
-
-// 字符求和散列函数
-unsigned int hashFunction(const char* str)
-{
-	unsigned int hash = 0;
-	while (*str)
-	{
-		hash = (hash + *str) % 1000; // 限制哈希值在 0-999 之间
-		str++;
-	}
-	return hash;
 }
 
 // 初始化 UserList
@@ -1100,14 +1088,16 @@ Status initDiscountList(DiscountList& L)
 }
 
 // 添加优惠信息
-Status addDiscount(DiscountList& L, int id, unsigned int categoryHash, double discountRate, time_t endDate)
+Status addDiscount(DiscountList& L, int id, char category1[15], char category2[15], double discountRate, double minAmount, time_t endDate)
 {
 	DiscountList p, newNode;
 	// 新建一个节点
 	newNode = new DiscountNode;
 	newNode->id = id;
-	newNode->categoryHash = categoryHash;
+	strcpy(newNode->category[0], category1);
+	strcpy(newNode->category[1], category2);
 	newNode->discountRate = discountRate;
+	newNode->minAmount = minAmount;
 	newNode->endDate = endDate;
 	newNode->next = NULL;
 	// 将新节点添加到链表末尾
@@ -1130,13 +1120,13 @@ Status readDiscountFromFile(const char* filename, DiscountList& L)
 	}
 
 	int id;
-	unsigned int categoryHash;
-	double discountRate;
+	char category1[15], category2[15];
+	double discountRate, minAmount;
 	time_t endDate;
 
-    while (fscanf(fp, "%d %u %lf %lld", &id, &categoryHash, &discountRate, &endDate) != EOF)
+	while (fscanf(fp, "%d %s %s %lf %lf %lld", &id, category1, category2, &discountRate, &minAmount, &endDate) != EOF)
 	{
-		addDiscount(L, id, categoryHash, discountRate, endDate);
+		addDiscount(L, id, category1, category2, discountRate, minAmount, endDate);
 	}
 
 	fclose(fp);
@@ -1849,4 +1839,9 @@ SystemState userManagement(UserList& User_L)
 	_getch();
 
 	return ADMIN_MENU;
+}
+
+SystemState discountManagement(DiscountList& Discount_L)
+{
+	return SystemState();
 }
