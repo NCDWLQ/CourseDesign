@@ -12,6 +12,7 @@ typedef int Status;
 
 #define USER_FILE "user.txt"
 #define PRODUCT_FILE "product.txt"
+#define DISCOUNT_FILE "discount.txt"
 
 // ANSI颜色代码
 #define RESET   "\033[0m"
@@ -80,6 +81,16 @@ typedef struct ShoppingCart
 	struct ShoppingCart* next;
 } CartNode, * CartList;
 
+// 优惠结构体
+typedef struct Discount
+{
+	int id;
+	unsigned int categoryHash;	// 分类的散列值
+	double discountRate;			// 折扣百分比
+	time_t endDate;			// 结束日期
+	struct Discount* next;
+} DiscountNode, * DiscountList;
+
 void printSeparator(const char* separator_char, const char* color, int width);
 void printCentered(const char* text, const char* color, int console_width);
 void printHeader();
@@ -87,6 +98,8 @@ void printAligned(const char* str, int target_width);
 
 int getDisplayWidth(const char* str);
 int getConsoleWidth();
+
+unsigned int hashFunction(const char* str);
 
 Status initUserList(UserList& L);
 Status appendUserList(UserList& L, char* username, char* password, int memberLevel, int points);
@@ -113,6 +126,10 @@ Status initCartList(CartList& L);
 Status appendCartList(CartList L, int id, int quantity);
 Status findItemInCart(CartList L, int id, CartList& result);
 Status deleteFromCart(CartList& L, int id);
+
+Status initDiscountList(DiscountList& L);
+Status addDiscount(DiscountList& L, int id, unsigned int categoryHash, double discountRate, time_t endDate);
+Status readDiscountFromFile(const char* filename, DiscountList& L);
 
 SystemState mainMenu();
 
@@ -145,6 +162,11 @@ int main()
 	ProductList Product_L;
 	initProductList(Product_L);
 	readProductFromFile(PRODUCT_FILE, Product_L);
+
+	// 初始化 DiscountList
+	DiscountList Discount_L;
+	initDiscountList(Discount_L);
+	readDiscountFromFile(DISCOUNT_FILE, Discount_L);
 
 	// 使用状态机模式管理程序流程
 	SystemState currState = MAIN_MENU;
@@ -284,6 +306,18 @@ int getConsoleWidth() {
 	}
 
 	return width;
+}
+
+// 字符求和散列函数
+unsigned int hashFunction(const char* str)
+{
+	unsigned int hash = 0;
+	while (*str)
+	{
+		hash = (hash + *str) % 1000; // 限制哈希值在 0-999 之间
+		str++;
+	}
+	return hash;
 }
 
 // 初始化 UserList
@@ -726,7 +760,7 @@ Status printProductList(ProductList L)
 	printf("%s共找到 %d 件商品%s", GREEN, count, RESET);
 	if (currUser->memberLevel == 0)
 	{
-		printf("，其中 %d 件商品已售罄，%s请及时补货！%s\n", sold_out, RED, RESET);
+		printf("，其中 %d 件商品已售罄，%s请及时补货！%s", sold_out, RED, RESET);
 	}
 	printf("\n\n");
 	return OK;
@@ -1055,6 +1089,58 @@ Status deleteFromCart(CartList& L, int id)
 		q = q->next;
 	}
 	return ERROR;
+}
+
+// 初始化优惠链表
+Status initDiscountList(DiscountList& L)
+{
+	L = new DiscountNode;
+	L->next = NULL;
+	return OK;
+}
+
+// 添加优惠信息
+Status addDiscount(DiscountList& L, int id, unsigned int categoryHash, double discountRate, time_t endDate)
+{
+	DiscountList p, newNode;
+	// 新建一个节点
+	newNode = new DiscountNode;
+	newNode->id = id;
+	newNode->categoryHash = categoryHash;
+	newNode->discountRate = discountRate;
+	newNode->endDate = endDate;
+	newNode->next = NULL;
+	// 将新节点添加到链表末尾
+	p = L;
+	while (p->next)
+	{
+		p = p->next;
+	}
+	p->next = newNode;
+	return OK;
+}
+
+// 从文件读取优惠信息并存储到 DiscountList 中
+Status readDiscountFromFile(const char* filename, DiscountList& L)
+{
+	FILE* fp;
+	if ((fp = fopen(filename, "r")) == NULL)
+	{
+		return ERROR;
+	}
+
+	int id;
+	unsigned int categoryHash;
+	double discountRate;
+	time_t endDate;
+
+    while (fscanf(fp, "%d %u %lf %lld", &id, &categoryHash, &discountRate, &endDate) != EOF)
+	{
+		addDiscount(L, id, categoryHash, discountRate, endDate);
+	}
+
+	fclose(fp);
+	return OK;
 }
 
 // 主菜单
@@ -1517,7 +1603,8 @@ SystemState searchProductUI(ProductList& L)
 	while (1)
 	{
 		char keyword[50] = { 0 };
-		printf("输入商品名称或分类进行搜索（支持模糊搜索）\n%s请输入（输入 0 返回用户菜单）：%s", YELLOW, RESET);
+		printf("输入商品名称或分类进行搜索（支持模糊搜索）\n%s请输入（输入 0 返回%s菜单）：%s", YELLOW,
+			currUser->memberLevel == 0 ? "管理员" : "用户", RESET);
 		scanf("%49s", keyword);
 
 		if (strcmp(keyword, "0") == 0)
@@ -1707,7 +1794,7 @@ SystemState productManagement(ProductList& Product_L)
 	system("cls");
 	printHeader();
 	printCentered("商品管理", WHITE, getConsoleWidth());
-	printSeparator("-", WHITE, getConsoleWidth());
+	printf("\n");
 	printProductList(Product_L);
 	while (1)
 	{
@@ -1739,6 +1826,8 @@ SystemState productManagement(ProductList& Product_L)
 				saveProductToFile(PRODUCT_FILE, Product_L);
 			}
 			break;
+		case 4:
+			return SEARCH_PRODUCTS;
 		case 0:
 			return ADMIN_MENU;
 		default:
