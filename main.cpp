@@ -5,14 +5,16 @@
 #include <time.h>
 #include <Windows.h>
 
-
 typedef int Status;
+
 #define OK 1
 #define ERROR 0
 
 #define USER_FILE "user.txt"
 #define PRODUCT_FILE "product.txt"
 #define DISCOUNT_FILE "discount.txt"
+
+#define MAX_CATEGORIES_LENTH 100
 
 // ANSI颜色代码
 #define RESET   "\033[0m"
@@ -92,6 +94,14 @@ typedef struct Discount
 	struct Discount* next;
 } DiscountNode, * DiscountList;
 
+// 分类结构体（临时存储）
+typedef struct Category
+{
+	char category1[15];
+	char category2[15];
+	int productCount;	// 商品数量
+} CategoryNode, * CategoryList;
+
 void printSeparator(const char* separator_char, const char* color, int width);
 void printCentered(const char* text, const char* color, int console_width);
 void printHeader();
@@ -121,6 +131,8 @@ Status addProduct(ProductList& L);
 Status updateProduct(ProductList& L);
 Status deleteProduct(ProductList& L);
 
+Status generateCategories(ProductList L, CategoryList& categories, int& count);
+
 Status initCartList(CartList& L);
 Status appendCartList(CartList L, int id, int quantity);
 Status findItemInCart(CartList L, int id, CartList& result);
@@ -128,7 +140,10 @@ Status deleteFromCart(CartList& L, int id);
 
 Status initDiscountList(DiscountList& L);
 Status addDiscount(DiscountList& L, int id, char category1[15], char category2[15], double discountRate, double minAmount, time_t endDate);
+Status addDiscountUI(ProductList Product_L, DiscountList& L);
 Status readDiscountFromFile(const char* filename, DiscountList& L);
+Status saveDiscountToFile(const char* filename, DiscountList L);
+Status printDiscountList(DiscountList L);
 
 SystemState mainMenu();
 
@@ -144,7 +159,7 @@ SystemState shoppingCart(ProductList Product_L);
 SystemState adminMenu();
 SystemState productManagement(ProductList& Product_L);
 SystemState userManagement(UserList& User_L);
-SystemState discountManagement(DiscountList& Discount_L);
+SystemState discountManagement(ProductList Product_L, DiscountList& Discount_L);
 
 // 定义全局变量，指示当前用户
 UserList currUser = NULL;
@@ -215,7 +230,7 @@ int main()
 			currState = userManagement(User_L);
 			break;
 		case DISCOUNT_MANAGEMENT:
-			// 优惠管理逻辑
+			currState = discountManagement(Product_L, Discount_L);
 			break;
 		case SALES_REPORT:
 			// 销售报告逻辑
@@ -445,6 +460,8 @@ Status printUserList(UserList L)
 	}
 	printSeparator("-", WHITE, getConsoleWidth());
 	printf("共 %d 位用户\n", count);
+
+	return OK;
 }
 
 // 初始化 ProductList
@@ -1008,6 +1025,37 @@ Status deleteProduct(ProductList& L)
 	return OK;
 }
 
+// 生成商品分类列表
+Status generateCategories(ProductList L, CategoryList& categories, int& count)
+{
+	count = 0;
+	ProductList p = L->next;
+
+	while (p)
+	{
+		int found = 0;
+		for (int i = 0; i < count; i++)
+		{
+			if(strcmp(categories[i].category1, p->category[0]) == 0 &&
+				strcmp(categories[i].category2, p->category[1]) == 0)
+			{
+				found = 1;
+				categories[i].productCount++;
+				break;
+			}
+		}
+		if (!found)
+		{
+			strcpy(categories[count].category1, p->category[0]);
+			strcpy(categories[count].category2, p->category[1]);
+			categories[count].productCount = 1;
+			count++;
+		}
+		p = p->next;
+	}
+	return OK;
+}
+
 // 初始化购物车链表
 Status initCartList(CartList& L)
 {
@@ -1110,6 +1158,121 @@ Status addDiscount(DiscountList& L, int id, char category1[15], char category2[1
 	return OK;
 }
 
+Status addDiscountUI(ProductList Product_L, DiscountList& L)
+{
+	CategoryList categories = new CategoryNode[MAX_CATEGORIES_LENTH];
+	int count = 0;
+	generateCategories(Product_L, categories, count);
+
+	printAligned("编号", 5);
+	printAligned("分类名", 30);
+	printAligned("商品种数", 10);
+	printf("\n");
+	printSeparator("-", WHITE, getConsoleWidth());
+
+	for (int i = 0; i < count; i++)
+	{
+		char category[31];
+		if (categories[i].category2[0] != '\0')
+		{
+			strcpy(category, categories[i].category1);
+			strcat(category, "->");
+			strcat(category, categories[i].category2);
+		}
+		else
+		{
+			strcpy(category, categories[i].category1);
+		}
+		printf("%-5d", i + 1);
+		printAligned(category, 30);
+		printf("%-10d", categories[i].productCount);
+		printf("\n");
+	}
+
+	int choice = -1;
+	printf("请选择要添加优惠的分类编号（输入 0 取消操作）: ");
+	scanf("%d", &choice);
+	if (choice == 0)
+	{
+		return OK;
+	}
+	else if (choice < 1 || choice > count)
+	{
+		printf("%s输入的编号不存在，请重新输入！%s\n", BOLD RED, RESET);
+		return ERROR;
+	}
+
+	char category[31];
+	strcpy(category, categories[choice - 1].category1);
+	if (categories[choice - 1].category2[0] != '\0')
+	{
+		strcat(category, "->");
+		strcat(category, categories[choice - 1].category2);
+	}
+	printf("您选择的分类是：%s\n", category);
+
+	double discountRate;
+	printf("请输入折扣率（0-1）: ");
+	scanf("%lf", &discountRate);
+	if (discountRate <= 0 || discountRate > 1)
+	{
+		printf("%s折扣率必须在 0 到 1 之间！%s\n", BOLD RED, RESET);
+		return ERROR;
+	}
+
+	double minAmount;
+	printf("请输入生效金额（大于 0）: ");
+	scanf("%lf", &minAmount);
+	if (minAmount <= 0)
+	{
+		printf("%s生效金额必须大于 0！%s\n", BOLD RED, RESET);
+		return ERROR;
+	}
+
+	time_t endDate;
+	long long duration;
+	char unit;
+	printf("请输入优惠有效期（示例：7d 为 7 天，1w 为 1 周，1m 为 1 月）: ");
+	scanf("%lld%c", &duration, &unit);
+	if (duration <= 0)
+	{
+		printf("%s输入的时间格式不正确！%s\n", BOLD RED, RESET);
+		return ERROR;
+	}
+	switch (unit)
+	{
+	case 'd':
+		endDate = time(NULL) + duration * 24 * 60 * 60; // 天
+		break;
+	case 'w':
+		endDate = time(NULL) + duration * 7 * 24 * 60 * 60; // 周
+		break;
+	case 'm':
+		endDate = time(NULL) + duration * 30 * 24 * 60 * 60; // 月
+		break;
+	default:
+		printf("%s输入的时间格式不正确！%s\n", BOLD RED, RESET);
+		return ERROR;
+	}
+
+	int id = 0;
+	DiscountList p = L->next;
+	while (p)
+	{
+		if (p->id > id)
+		{
+			id = p->id;
+		}
+		p = p->next;
+	}
+	id++;		// 新优惠 ID 为最大 ID + 1
+	
+	// 添加优惠到链表
+	addDiscount(L, id, categories[choice - 1].category1, categories[choice - 1].category2, discountRate, minAmount, endDate);
+	saveDiscountToFile(DISCOUNT_FILE, L);
+	return OK;
+}
+
 // 从文件读取优惠信息并存储到 DiscountList 中
 Status readDiscountFromFile(const char* filename, DiscountList& L)
 {
@@ -1130,6 +1293,74 @@ Status readDiscountFromFile(const char* filename, DiscountList& L)
 	}
 
 	fclose(fp);
+	return OK;
+}
+
+Status saveDiscountToFile(const char* filename, DiscountList L)
+{
+	FILE* fp;
+	if ((fp = fopen(filename, "w")) == NULL)
+	{
+		return ERROR;
+	}
+
+	DiscountList p = L->next;
+	if (p == NULL)
+	{
+		return ERROR;
+	}
+	while (p)
+	{
+		fprintf(fp, "%d %s %s %.2f %.2f %lld\n", p->id, p->category[0], p->category[1], p->discountRate, p->minAmount, p->endDate);
+		p = p->next;
+	}
+	fclose(fp);
+	return OK;
+}
+
+// 打印优惠列表
+Status printDiscountList(DiscountList L)
+{
+	DiscountList p = L->next;
+	if (p == NULL)
+	{
+		printf("优惠列表为空\n\n");
+		return ERROR;
+	}
+	printAligned("ID", 4);
+	printAligned("商品分类", 30);
+	printAligned("折扣率", 10);
+	printAligned("生效金额", 10);
+	printAligned("截止日期", 20);
+	printf("\n");
+	printSeparator("-", WHITE, getConsoleWidth());
+
+	int count = 0;
+	while (p)
+	{
+		// 处理分类
+		char category[31];
+		strcpy(category, p->category[0]);
+		if (p->category[1][0] != '\0')
+		{
+			strcat(category, "->");
+			strcat(category, p->category[1]);
+		}
+		// 处理时间格式
+		struct tm* timeinfo = localtime(&p->endDate);
+		char timeStr[30];
+		strftime(timeStr, sizeof(timeStr), "%Y-%m-%d %H:%M:%S", timeinfo);
+
+		printf("%-4d", p->id);
+		printAligned(category, 30);
+		printf("%-10.2f", p->discountRate);
+		printf("%-10.2f", p->minAmount);
+		printf("%s%-20s%s\n", YELLOW, timeStr, RESET);
+		p = p->next;
+		count++;
+	}
+	printSeparator("-", WHITE, getConsoleWidth());
+	printf("共 %d 条优惠信息\n\n", count);
 	return OK;
 }
 
@@ -1769,6 +2000,7 @@ SystemState adminMenu()
 	case 0:
 		currUser = NULL;
 		printf("%s已退出登录！正在返回主菜单%s\n", BOLD GREEN, RESET);
+		Sleep(1000);
 		return MAIN_MENU;
 		break;
 	default:
@@ -1841,7 +2073,34 @@ SystemState userManagement(UserList& User_L)
 	return ADMIN_MENU;
 }
 
-SystemState discountManagement(DiscountList& Discount_L)
+SystemState discountManagement(ProductList Product_L, DiscountList& Discount_L)
 {
-	return SystemState();
+	system("cls");
+	printHeader();
+	printCentered("优惠管理", WHITE, getConsoleWidth());
+	printDiscountList(Discount_L);
+
+	int choice = -1;
+	printf("请选择要进行的操作：\n");
+	printf("1. 添加优惠\n");
+	printf("0. 返回管理员菜单\n");
+	printf("%s输入序号进行对应操作：%s", YELLOW, RESET);
+	scanf("%d", &choice);
+	switch (choice)
+	{
+	case 1:
+		printf("\n");
+		if (addDiscountUI(Product_L, Discount_L))
+		{
+			printf("%s优惠添加成功！%s\n", BOLD GREEN, RESET);
+			Sleep(1000);
+		}
+		return DISCOUNT_MANAGEMENT;
+	case 0:
+		return ADMIN_MENU;
+	default:
+		printf("%s输入的序号不存在，请重新输入！%s\n\n", BOLD RED, RESET);
+		Sleep(1000);
+		return DISCOUNT_MANAGEMENT;
+	}
 }
