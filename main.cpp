@@ -44,7 +44,7 @@ typedef enum
 	SEARCH_PRODUCTS,
 	SHOPPING_CART,
 	CHECKOUT,
-	SHOPPING_HISTORY,
+	DISCOUNT_INFO,
 	PRODUCT_MANAGEMENT,
 	USER_MANAGEMENT,
 	DISCOUNT_MANAGEMENT,
@@ -102,6 +102,15 @@ typedef struct Category
 	int productCount;	// 商品数量
 } CategoryNode, * CategoryList;
 
+// 定义一个临时结构体来存储适用于折扣的商品
+typedef struct DiscountItem
+{
+	int productId;        // 商品ID
+	int quantity;         // 商品数量
+	double originalPrice; // 商品原价
+	char category[2][15]; // 商品分类
+} DiscountItem;
+
 void printSeparator(const char* separator_char, const char* color, int width);
 void printCentered(const char* text, const char* color, int console_width);
 void printHeader();
@@ -140,6 +149,8 @@ Status deleteFromCart(CartList& L, int id);
 
 Status initDiscountList(DiscountList& L);
 Status addDiscount(DiscountList& L, int id, char category1[15], char category2[15], double discountRate, double minAmount, time_t endDate);
+Status deleteDiscount(DiscountList& L, int id);
+Status deleteExpiredDiscount(DiscountList& L);
 Status addDiscountUI(ProductList Product_L, DiscountList& L);
 Status readDiscountFromFile(const char* filename, DiscountList& L);
 Status saveDiscountToFile(const char* filename, DiscountList L);
@@ -155,6 +166,8 @@ SystemState userMenu();
 SystemState viewProducts(ProductList& L);
 SystemState searchProductUI(ProductList& L);
 SystemState shoppingCart(ProductList Product_L);
+SystemState checkout(ProductList Product_L, DiscountList Discount_L, UserList& User_L);
+SystemState discountInfo(ProductList Product_L, DiscountList Discount_L, UserList& User_L);
 
 SystemState adminMenu();
 SystemState productManagement(ProductList& Product_L);
@@ -182,6 +195,7 @@ int main()
 	DiscountList Discount_L;
 	initDiscountList(Discount_L);
 	readDiscountFromFile(DISCOUNT_FILE, Discount_L);
+	deleteExpiredDiscount(Discount_L); // 删除过期的折扣
 
 	// 使用状态机模式管理程序流程
 	SystemState currState = MAIN_MENU;
@@ -218,10 +232,10 @@ int main()
 			currState = shoppingCart(Product_L);
 			break;
 		case CHECKOUT:
-			// 结账逻辑
+			currState = checkout(Product_L, Discount_L, User_L);
 			break;
-		case SHOPPING_HISTORY:
-			// 购物历史逻辑
+		case DISCOUNT_INFO:
+			currState = discountInfo(Product_L, Discount_L, User_L);
 			break;
 		case PRODUCT_MANAGEMENT:
 			currState = productManagement(Product_L);
@@ -1158,6 +1172,48 @@ Status addDiscount(DiscountList& L, int id, char category1[15], char category2[1
 	return OK;
 }
 
+// 删除优惠信息
+Status deleteDiscount(DiscountList& L, int id)
+{
+	DiscountList p = L->next;
+	DiscountList prev = L;
+	while (p)
+	{
+		if (p->id == id)
+		{
+			prev->next = p->next;
+			delete p;
+			return OK;
+		}
+		prev = p;
+		p = p->next;
+	}
+	return ERROR; // 优惠 ID 不存在
+}
+
+// 删除过期的优惠信息
+Status deleteExpiredDiscount(DiscountList& L)
+{
+	DiscountList p = L->next;
+	DiscountList prev = L;
+	while (p)
+	{
+		if (p->endDate < time(NULL))
+		{
+			prev->next = p->next;
+			delete p;
+			p = prev->next; // 更新 p
+		}
+		else
+		{
+			prev = p;
+			p = p->next;
+		}
+	}
+	saveDiscountToFile(DISCOUNT_FILE, L); // 保存删除后的优惠信息到文件
+	return OK;
+}
+
 Status addDiscountUI(ProductList Product_L, DiscountList& L)
 {
 	CategoryList categories = new CategoryNode[MAX_CATEGORIES_LENTH];
@@ -1217,6 +1273,7 @@ Status addDiscountUI(ProductList Product_L, DiscountList& L)
 	if (discountRate <= 0 || discountRate > 1)
 	{
 		printf("%s折扣率必须在 0 到 1 之间！%s\n", BOLD RED, RESET);
+		Sleep(1000);
 		return ERROR;
 	}
 
@@ -1226,6 +1283,7 @@ Status addDiscountUI(ProductList Product_L, DiscountList& L)
 	if (minAmount <= 0)
 	{
 		printf("%s生效金额必须大于 0！%s\n", BOLD RED, RESET);
+		Sleep(1000);
 		return ERROR;
 	}
 
@@ -1699,7 +1757,7 @@ SystemState userMenu()
 	printf("2. 搜索商品\n");
 	printf("3. 查看购物车\n");
 	printf("4. 自助结账\n");
-	printf("5. 购物记录\n");
+	printf("5. 优惠信息\n");
 	printf("0. 退出登录\n");
 	printf("%s输入序号进行对应操作：%s", YELLOW, RESET);
 	scanf("%d", &choice);
@@ -1719,7 +1777,7 @@ SystemState userMenu()
 		return CHECKOUT;
 		break;
 	case 5:
-		return SHOPPING_HISTORY;
+		return DISCOUNT_INFO;
 		break;
 	case 0:
 		currUser = NULL;
@@ -1890,6 +1948,7 @@ SystemState shoppingCart(ProductList Product_L)
 		printf("请选择要进行的操作：\n");
 		printf("1. 修改商品数量\n");
 		printf("2. 删除商品\n");
+		printf("3. 自助结账\n");
 		printf("0. 返回用户菜单\n");
 		printf("%s请输入操作选项：%s", YELLOW, RESET);
 
@@ -1954,12 +2013,319 @@ SystemState shoppingCart(ProductList Product_L)
 				Sleep(1500);
 			}
 		}
+		else if (choice == 3)
+		{
+			return CHECKOUT;
+		}
 		else
 		{
 			printf("%s无效的操作选项！%s\n", BOLD RED, RESET);
 			Sleep(1500);
 		}
 	}
+}
+
+// 结账函数 - 自动选择最优折扣
+SystemState checkout(ProductList Product_L, DiscountList Discount_L, UserList& User_L)
+{
+	time_t currTime = time(0);
+	tm* ltm = localtime(&currTime);
+
+	system("cls");
+	printHeader();
+	printCentered("结算页面", WHITE, getConsoleWidth());
+
+	// 显示当前日期时间
+	printf("当前系统时间：%04d-%02d-%02d %02d:%02d:%02d\n", 1900 + ltm->tm_year, 1 + ltm->tm_mon, ltm->tm_mday, ltm->tm_hour, ltm->tm_min, ltm->tm_sec);
+
+	CartList cart = Cart_L->next;
+	if (cart == NULL)
+	{
+		printf("%s购物车为空，无法结账！%s\n", BOLD RED, RESET);
+		Sleep(1500);
+		return USER_MENU;
+	}
+
+	// 1. 显示购物清单
+	printf("%s您的购物清单：%s\n", BOLD, RESET);
+	printAligned("商品名称", 50);
+	printAligned("数量", 10);
+	printAligned("单价", 15);
+	printAligned("原价小计", 15);
+	printf("\n");
+	printSeparator("-", WHITE, getConsoleWidth());
+
+	// 计算购物车总价（包含商品自身优惠价）
+	double cartTotal = 0.0;
+	CartList tempCart = cart;
+	while (tempCart)
+	{
+		ProductList p = NULL;
+		getProductInfo(Product_L, tempCart->id, p);
+
+		double price = (p->discount != -1) ? p->discount : p->price;
+		double subtotal = price * tempCart->quantity;
+
+		printf("%-50s", p->name);
+		printf("%-10d", tempCart->quantity);
+		printf("%-15.2f", price);
+		printf("%-15.2f\n", subtotal);
+
+		cartTotal += subtotal;
+		tempCart = tempCart->next;
+	}
+	printSeparator("-", WHITE, getConsoleWidth());
+	printf("商品原始总价：%.2f 元\n\n", cartTotal);
+
+	// 2. 检查可用折扣并自动计算最优折扣
+	time_t now = time(NULL);
+	DiscountList discount = Discount_L->next;
+	int discountCount = 0;
+
+	// 统计有效折扣数量
+	while (discount)
+	{
+		if (now < discount->endDate) // 只考虑未过期的折扣
+		{
+			discountCount++;
+		}
+		discount = discount->next;
+	}
+
+	// 如果没有折扣，直接进行结算
+	if (discountCount == 0)
+	{
+		printf("%s当前没有有效的折扣活动%s\n\n", YELLOW, RESET);
+	}
+	else
+	{
+		// 准备分析每个折扣
+		DiscountList bestDiscount = NULL;
+		double maxSavings = 0.0;
+		double bestFinalTotal = cartTotal;
+		double bestCategoryTotal = 0.0;
+
+		discount = Discount_L->next;
+		while (discount)
+		{
+			// 只考虑未过期折扣
+			if (now < discount->endDate)
+			{
+				// 收集符合这个折扣分类的商品
+				int maxItems = 100; // 假设最多100种商品
+				DiscountItem* discountItems = new DiscountItem[maxItems];
+				int itemCount = 0;
+				double categoryTotal = 0.0; // 符合分类的商品总价（原价计算）
+
+				cart = Cart_L->next;
+				while (cart)
+				{
+					ProductList p = NULL;
+					getProductInfo(Product_L, cart->id, p);
+
+					// 检查商品分类是否匹配
+					bool categoryMatch = false;
+					if (strcmp(p->category[0], discount->category[0]) == 0)
+					{
+						if (discount->category[1][0] == '\0' ||
+							strcmp(p->category[1], discount->category[1]) == 0)
+						{
+							categoryMatch = true;
+						}
+					}
+
+					if (categoryMatch)
+					{
+						// 如果商品无优惠价，或者商品优惠比率大于折扣比率，则使用折扣
+						double discountRatio = 1.0;
+						if (p->discount != -1)
+						{
+							discountRatio = p->discount / p->price; // 商品自身优惠比率
+						}
+
+						if (p->discount == -1 || discountRatio > discount->discountRate)
+						{
+							// 符合条件，加入折扣商品列表
+							discountItems[itemCount].productId = p->id;
+							discountItems[itemCount].quantity = cart->quantity;
+							discountItems[itemCount].originalPrice = p->price;
+							strcpy(discountItems[itemCount].category[0], p->category[0]);
+							strcpy(discountItems[itemCount].category[1], p->category[1]);
+
+							categoryTotal += p->price * cart->quantity;
+							itemCount++;
+						}
+					}
+
+					cart = cart->next;
+				}
+
+				// 检查是否达到折扣的最低金额
+				if (categoryTotal >= discount->minAmount)
+				{
+					// 计算折扣节省的金额
+					double discountedTotal = categoryTotal * discount->discountRate;
+					double savings = categoryTotal - discountedTotal;
+
+					// 如果这个折扣比之前找到的更好，则更新
+					if (savings > maxSavings)
+					{
+						maxSavings = savings;
+						bestDiscount = discount;
+						bestFinalTotal = cartTotal - savings;
+						bestCategoryTotal = categoryTotal;
+					}
+				}
+
+				delete[] discountItems;
+			}
+
+			discount = discount->next;
+		}
+
+		// 如果找到了可用的最优折扣
+		if (bestDiscount != NULL)
+		{
+			// 显示折扣信息
+			printf("%s系统已自动为您选择最优惠的折扣！%s\n\n", BOLD GREEN, RESET);
+
+			// 显示折扣详情
+			char category[31];
+			strcpy(category, bestDiscount->category[0]);
+			if (bestDiscount->category[1][0] != '\0')
+			{
+				strcat(category, "->");
+				strcat(category, bestDiscount->category[1]);
+			}
+
+			printf("已选择折扣：分类 \"%s\" 折扣率 %.2f\n", category, bestDiscount->discountRate);
+			printf("符合折扣条件的商品总价：%.2f 元\n", bestCategoryTotal);
+			printf("折扣后价格：%.2f 元\n", bestCategoryTotal * bestDiscount->discountRate);
+			printf("节省金额：%.2f 元\n", maxSavings);
+			printf("最终应付金额：%.2f 元\n\n", bestFinalTotal);
+
+			// 结算过程
+			printf("是否确认结账？(输入 1 确认，0 取消): ");
+			int confirm;
+			scanf("%d", &confirm);
+
+			if (confirm)
+			{
+				// 更新库存和积分
+				cart = Cart_L->next;
+				while (cart)
+				{
+					ProductList p = NULL;
+					getProductInfo(Product_L, cart->id, p);
+					p->stock -= cart->quantity; // 减少库存
+					cart = cart->next;
+				}
+
+				// 更新用户积分（假设每消费1元增加1积分）
+				int pointsEarned = (int)bestFinalTotal;
+				currUser->points += pointsEarned;
+				saveUserToFile(USER_FILE, User_L);
+				saveProductToFile(PRODUCT_FILE, Product_L);
+
+				// 清空购物车
+				CartList curr = Cart_L->next;
+				while (curr)
+				{
+					CartList temp = curr;
+					curr = curr->next;
+					delete temp;
+				}
+				Cart_L->next = NULL;
+
+				printf("%s结账成功！您获得了 %d 积分，当前总积分：%d%s\n",
+					BOLD GREEN, pointsEarned, currUser->points, RESET);
+				Sleep(2000);
+				return USER_MENU;
+			}
+			else
+			{
+				printf("%s已取消结账%s\n", YELLOW, RESET);
+				Sleep(1500);
+				return USER_MENU;
+			}
+		}
+		else
+		{
+			printf("%s没有找到适用的折扣，按原价结算%s\n\n", YELLOW, RESET);
+		}
+	}
+
+	// 常规结账流程（不使用折扣或没有可用折扣）
+	printf("是否确认结账？(输入 1 确认，0 取消): ");
+	int confirm;
+	scanf("%d", &confirm);
+
+	if (confirm)
+	{
+		// 更新库存和积分
+		cart = Cart_L->next;
+		while (cart)
+		{
+			ProductList p = NULL;
+			getProductInfo(Product_L, cart->id, p);
+			p->stock -= cart->quantity; // 减少库存
+			cart = cart->next;
+		}
+
+		// 更新用户积分
+		int pointsEarned = (int)cartTotal;
+		currUser->points += pointsEarned;
+		saveUserToFile(USER_FILE, User_L);
+		saveProductToFile(PRODUCT_FILE, Product_L);
+
+		// 清空购物车
+		CartList curr = Cart_L->next;
+		while (curr)
+		{
+			CartList temp = curr;
+			curr = curr->next;
+			delete temp;
+		}
+		Cart_L->next = NULL;
+
+		printf("%s结账成功！您获得了 %d 积分，当前总积分：%d%s\n",
+			BOLD GREEN, pointsEarned, currUser->points, RESET);
+		Sleep(2000);
+	}
+	else
+	{
+		printf("%s已取消结账%s\n", YELLOW, RESET);
+		Sleep(1500);
+	}
+
+	return USER_MENU;
+}
+
+// 显示优惠信息
+SystemState discountInfo(ProductList Product_L, DiscountList Discount_L, UserList& User_L)
+{
+	time_t now = time(0);
+	tm* ltm = localtime(&now);
+
+	system("cls");
+	printHeader();
+	printCentered("优惠信息", WHITE, getConsoleWidth());
+	printf("当前系统时间：%04d-%02d-%02d %02d:%02d:%02d\n", 1900 + ltm->tm_year, 1 + ltm->tm_mon, ltm->tm_mday, ltm->tm_hour, ltm->tm_min, ltm->tm_sec);
+
+	printf("优惠规则：\n");
+	printf("1. 部分商品自身存在优惠价\n");
+	printf("2. 部分商品分类存在折扣，当该分类下的商品达到最低金额时即可使用\n");
+	printf("3. 优惠价和折扣不能叠加使用，即折扣使用商品的原价计算\n");
+	printf("4. 单次购物最多只能使用一个折扣\n");
+	printf("5. 结算时系统会自动选择最优惠的组合\n");
+	printSeparator("-", WHITE, getConsoleWidth());
+
+	// 显示折扣列表
+	printDiscountList(Discount_L);
+	// 按任意键返回用户菜单
+	printf("%s按任意键返回用户菜单%s\n", YELLOW, RESET);
+	_getch();
+	return USER_MENU;
 }
 
 SystemState adminMenu()
