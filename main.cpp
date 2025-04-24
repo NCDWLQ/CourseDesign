@@ -158,7 +158,7 @@ Status readDiscountFromFile(const char* filename, DiscountList& L);
 Status saveDiscountToFile(const char* filename, DiscountList L);
 Status printDiscountList(DiscountList L);
 
-Status salesLog(double totalPay);
+Status salesLog(int pointsUsed, double totalPay, int pointsEarned);
 
 bool isToday(time_t timestamp);
 
@@ -179,7 +179,7 @@ SystemState adminMenu();
 SystemState productManagement(ProductList& Product_L);
 SystemState userManagement(UserList& User_L);
 SystemState discountManagement(ProductList Product_L, DiscountList& Discount_L);
-SystemState salesReport();
+SystemState salesReport(ProductList Product_L);
 
 // 定义全局变量，指示当前用户
 UserList currUser = NULL;
@@ -254,7 +254,7 @@ int main()
 			currState = discountManagement(Product_L, Discount_L);
 			break;
 		case SALES_REPORT:
-			currState = salesReport();
+			currState = salesReport(Product_L);
 			break;
 		case TEST:
 			return OK;
@@ -2603,7 +2603,7 @@ SystemState discountManagement(ProductList Product_L, DiscountList& Discount_L)
 	}
 }
 
-SystemState salesReport()
+SystemState salesReport(ProductList Product_L)
 {
 	system("cls");
 	printHeader();
@@ -2625,13 +2625,31 @@ SystemState salesReport()
 	int itemCount, id, quantity, pointsUsed, pointsEarned;
 	double actualPay;
 
+	int itemSold[2][100] = { 0 }; // 商品 ID 和数量
+	int count = 0;
+
 	// 逐条读取日志
 	while (fscanf(fp, "%lld %s %d", &timestamp, username, &itemCount) != EOF)
 	{
-		// 跳过商品 ID 和数量
+		// 读取商品 ID 和数量
 		for (int i = 0; i < itemCount; i++)
 		{
 			fscanf(fp, "%d %d", &id, &quantity);
+			int j;
+			for (j = 0; j < count; j++)
+			{
+				if (itemSold[0][j] == id)
+				{
+					itemSold[1][j] += quantity; // 累加数量
+					break;
+				}
+			}
+			if (j == count)
+			{
+				itemSold[0][count] = id; // 新商品 ID
+				itemSold[1][count] = quantity; // 数量
+				count++;
+			}
 		}
 
 		// 读取积分和实际支付金额
@@ -2646,12 +2664,47 @@ SystemState salesReport()
 	}
 	fclose(fp);
 
+	// 对 itemSold 数组进行排序
+	for (int i = 0; i < count - 1; i++)
+	{
+		for (int j = 0; j < count - i - 1; j++)
+		{
+			if (itemSold[1][j] < itemSold[1][j + 1])
+			{
+				int tempId = itemSold[0][j];
+				itemSold[0][j] = itemSold[0][j + 1];
+				itemSold[0][j + 1] = tempId;
+				int tempQuantity = itemSold[1][j];
+				itemSold[1][j] = itemSold[1][j + 1];
+				itemSold[1][j + 1] = tempQuantity;
+			}
+		}
+	}
+
 	// 打印统计结果
 	time_t now = time(NULL);
 	struct tm* timeinfo = localtime(&now);
 	printf("当前日期：%04d-%02d-%02d\n", 1900 + timeinfo->tm_year, 1 + timeinfo->tm_mon, timeinfo->tm_mday);
 	printf("今日订单数：%d\n", todayOrders);
 	printf("今日销售额：%.2f 元\n", todaySales);
+	printf("今日热销商品（按数量降序）：\n");
+	printAligned("商品 ID", 10);
+	printAligned("商品名称", 50);
+	printAligned("数量", 10);
+	printf("\n");
+	printSeparator("-", WHITE, getConsoleWidth());
+	for (int i = 0; i < count; i++)
+	{
+		ProductList p = NULL;
+		getProductInfo(Product_L, itemSold[0][i], p);
+		if (p != NULL)
+		{
+			printf("%-10d", itemSold[0][i]);
+			printAligned(p->name, 50);
+			printf("%-10d\n", itemSold[1][i]);
+		}
+	}
+	printSeparator("-", WHITE, getConsoleWidth());
 	printf("%s按任意键返回管理员菜单%s\n", YELLOW, RESET);
 	_getch();
 	return ADMIN_MENU;
