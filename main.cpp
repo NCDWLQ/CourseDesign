@@ -745,6 +745,11 @@ Status printProductList(ProductList L)
 
 	while (p)
 	{
+		if (p->price == -1 && currUser->memberLevel != 0)	// 普通用户不显示赠品
+		{
+			p = p->next;
+			continue;
+		}
 		if (p->stock == 0)		// 普通用户不显示库存为 0 的商品
 		{
 			sold_out++;
@@ -764,19 +769,27 @@ Status printProductList(ProductList L)
 			strcat(category, "->");
 			strcat(category, p->category[1]);
 		}
-
+		
 		printf("%-4d", p->id);
 		printAligned(p->name, 50);
 		printAligned(category, 30);
 		printf("%-10d", p->stock);
-		printf("%-10.2f", p->price);
-		if (p->discount != -1)
+		if (p->price != -1)
 		{
-			printf("%-10.2f", p->discount);
+			printf("%-10.2f", p->price);
+			if (p->discount != -1)
+			{
+				printf("%-10.2f", p->discount);
+			}
+			else
+			{
+				printf("%-10s", "无");
+			}
 		}
 		else
 		{
-			printf("%-10s", "无");
+			printAligned("赠品", 10);
+			printf("满%.2lf赠送", p->discount);
 		}
 		printf("%s\n", RESET);
 		count++;
@@ -1065,7 +1078,7 @@ Status generateCategories(ProductList L, CategoryList& categories, int& count)
 				break;
 			}
 		}
-		if (!found)
+		if (!found && strcmp(p->category[0], "赠品") != 0)
 		{
 			strcpy(categories[count].category1, p->category[0]);
 			strcpy(categories[count].category2, p->category[1]);
@@ -1258,7 +1271,7 @@ Status addDiscountUI(ProductList Product_L, DiscountList& L)
 	scanf("%d", &choice);
 	if (choice == 0)
 	{
-		return OK;
+		return ERROR;
 	}
 	else if (choice < 1 || choice > count)
 	{
@@ -2319,6 +2332,46 @@ SystemState checkout(ProductList Product_L, DiscountList Discount_L, UserList& U
 				Cart_L->next = NULL;
 
 				printf("%s结账成功！您获得了 %d 积分，当前总积分：%d%s\n", BOLD GREEN, pointsEarned, currUser->points, RESET);
+
+				ProductList gift = Product_L->next;
+				int giftID[20];
+				int giftCount = 0;
+				int foundGift = 0;
+				while (gift)
+				{
+					if (gift->price == -1 && gift->stock > 0 && bestFinalTotal >= gift->discount)
+					{
+						if (foundGift == 0)
+						{
+							printf("%s您可以选择以下赠品：%s\n", BOLD GREEN, RESET);
+							foundGift = 1;
+						}
+						giftID[giftCount] = gift->id;
+						printf("%d. %s\n", ++giftCount, gift->name);
+					}
+					gift = gift->next;
+				}
+				if (foundGift)
+				{
+					while (1)
+					{
+						printf("请选择：");
+						int giftChoice = 0;
+						scanf("%d", &giftChoice);
+						if (giftChoice<1 || giftChoice>giftCount)
+						{
+							printf("赠品序号不存在！\n");
+						}
+						else
+						{
+							getProductInfo(Product_L, giftID[giftChoice - 1], gift);
+							gift->stock--;
+							printf("已获得赠品：%s\n", gift->name);
+							break;
+						}
+					}
+				}
+
 				Sleep(2000);
 				return USER_MENU;
 			}
@@ -2409,6 +2462,46 @@ SystemState checkout(ProductList Product_L, DiscountList Discount_L, UserList& U
 		Cart_L->next = NULL;
 
 		printf("%s结账成功！您获得了 %d 积分，当前总积分：%d%s\n", BOLD GREEN, pointsEarned, currUser->points, RESET);
+		
+		ProductList gift = Product_L->next;
+		int giftID[20];
+		int giftCount = 0;
+		int foundGift = 0;
+		while (gift)
+		{
+			if (gift->price == -1 && gift->stock > 0 && cartTotal >= gift->discount)
+			{
+				if (foundGift == 0)
+				{
+					printf("%s您可以选择以下赠品：%s\n", BOLD GREEN, RESET);
+					foundGift = 1;
+				}
+				giftID[giftCount] = gift->id;
+				printf("%d. %s\n", ++giftCount, gift->name);
+			}
+			gift = gift->next;
+		}
+		if (foundGift)
+		{
+			while (1)
+			{
+				printf("请选择：");
+				int giftChoice = 0;
+				scanf("%d", &giftChoice);
+				if (giftChoice<1 || giftChoice>giftCount)
+				{
+					printf("赠品序号不存在！\n");
+				}
+				else
+				{
+					getProductInfo(Product_L, giftID[giftChoice - 1], gift);
+					gift->stock--;
+					printf("已获得赠品：%s\n", gift->name);
+					break;
+				}
+			}
+		}
+		
 		Sleep(2000);
 	}
 	else
