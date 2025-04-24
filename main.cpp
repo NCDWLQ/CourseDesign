@@ -50,6 +50,7 @@ typedef enum
 	USER_MANAGEMENT,
 	DISCOUNT_MANAGEMENT,
 	SALES_REPORT,
+	SUPPLIER_MANAGEMENT,
 	EXIT,
 	TEST
 }SystemState;
@@ -180,6 +181,7 @@ SystemState productManagement(ProductList& Product_L);
 SystemState userManagement(UserList& User_L);
 SystemState discountManagement(ProductList Product_L, DiscountList& Discount_L);
 SystemState salesReport(ProductList Product_L);
+SystemState supplierManagement(ProductList Product_L);
 
 // 定义全局变量，指示当前用户
 UserList currUser = NULL;
@@ -255,6 +257,9 @@ int main()
 			break;
 		case SALES_REPORT:
 			currState = salesReport(Product_L);
+			break;
+		case SUPPLIER_MANAGEMENT:
+			currState = supplierManagement(Product_L);
 			break;
 		case TEST:
 			return OK;
@@ -2570,6 +2575,7 @@ SystemState adminMenu()
 	printf("2. 用户列表\n");
 	printf("3. 优惠管理\n");
 	printf("4. 销售统计\n");
+	printf("5. 联系供应商\n");
 	printf("0. 退出登录\n");
 	printf("%s输入序号进行对应操作：%s", YELLOW, RESET);
 	scanf("%d", &choice);
@@ -2587,6 +2593,9 @@ SystemState adminMenu()
 		break;
 	case 4:
 		return SALES_REPORT;
+		break;
+	case 5:
+		return SUPPLIER_MANAGEMENT;
 		break;
 	case 0:
 		currUser = NULL;
@@ -2799,6 +2808,195 @@ SystemState salesReport(ProductList Product_L)
 	}
 	printSeparator("-", WHITE, getConsoleWidth());
 	printf("%s按任意键返回管理员菜单%s\n", YELLOW, RESET);
+	_getch();
+	return ADMIN_MENU;
+}
+
+// 联系供应商进行补货
+SystemState supplierManagement(ProductList Product_L)
+{
+	system("cls");
+	printHeader();
+	printCentered("联系供应商", WHITE, getConsoleWidth());
+
+	// 统计售罄商品
+	ProductList p = Product_L->next;
+	int outOfStockCount = 0;
+	while (p)
+	{
+		if (p->stock == 0)
+		{
+			if (outOfStockCount == 0)	// 首次找到打印表头
+			{
+				printf("%s以下商品已售罄，请联系供应商进行补货：%s\n", BOLD RED, RESET);
+				printAligned("ID", 4);
+				printAligned("商品名称", 50);
+				printAligned("分类", 20);
+				printAligned("原价", 10);
+				printAligned("优惠价", 10);
+				printf("\n");
+				printSeparator("-", WHITE, getConsoleWidth());
+			}
+
+			printf("%-4d", p->id);
+			printAligned(p->name, 50);
+			char category[31];
+			strcpy(category, p->category[0]);
+			if (p->category[1][0] != 0)
+			{
+				strcat(category, "->");
+				strcat(category, p->category[1]);
+			}
+			printAligned(category, 20);
+			printf("%-10.2f", p->price);
+			if (p->discount != -1)
+			{
+				printf("%-10.2f", p->discount);
+			}
+			else
+			{
+				printf("%-10s", "无");
+			}
+			printf("\n");
+
+			outOfStockCount++;
+		}
+		p = p->next;
+	}
+
+	if (outOfStockCount == 0)
+	{
+		printf("%s当前没有售罄商品%s\n", BOLD GREEN, RESET);
+		printf("%s按任意键返回管理员菜单%s\n", YELLOW, RESET);
+		_getch();
+		return ADMIN_MENU;
+	}
+
+	printSeparator("-", WHITE, getConsoleWidth());
+
+	// 输入补货数量
+	printf("%s请输入每种商品的补货数量：%s\n", YELLOW, RESET);
+	p = Product_L->next;
+	int* restockQuantities = (int*)malloc(outOfStockCount * sizeof(int));	// 动态分配内存
+	int index = 0;
+
+	while (p)
+	{
+		if (p->stock == 0)
+		{
+			printf("商品 ID %d（%s）：", p->id, p->name);
+			scanf("%d", &restockQuantities[index]);
+			if (restockQuantities[index] <= 0)
+			{
+				printf("%s补货数量必须大于 0！%s\n", BOLD RED, RESET);
+				continue;
+			}
+			index++;
+		}
+		p = p->next;
+	}
+
+	// 输入报价单文件名
+	printf("报价单格式：ID 价格，一行一个，必须包含所有缺货商品\n");
+	printf("%s请输入报价单文件名（以空格分割，不超过 3 个，输入 0 结束）：%s", YELLOW, RESET);
+	char filenames[3][30];
+	int fileCount = 0;
+
+	while (fileCount < 3)
+	{
+		scanf("%s", filenames[fileCount]);
+		if (strcmp(filenames[fileCount], "0") == 0)
+		{
+			break;
+		}
+		fileCount++;
+	}
+
+	if (fileCount == 0)
+	{
+		printf("%s未输入任何报价单，操作取消！%s\n", BOLD RED, RESET);
+		free(restockQuantities);
+		Sleep(1000);
+		return ADMIN_MENU;
+	}
+
+	// 读取报价单并选择最低报价
+	double* totalPrices = (double*)malloc(fileCount * sizeof(double));
+	memset(totalPrices, 0, fileCount * sizeof(double));	// 将动态分配的数组初始化为 0
+
+	for (int i = 0; i < fileCount; i++)
+	{
+		FILE* fp = fopen(filenames[i], "r");
+		if (fp == NULL)
+		{
+			printf("%s打开报价单 %s 失败，跳过！%s\n", BOLD RED, filenames[i], RESET);
+			totalPrices[i] = -1;
+			continue;
+		}
+		p = Product_L->next;
+		index = 0;
+
+		while (p)
+		{
+			if (p->stock == 0)
+			{
+				int productID;
+				double unitPrice;
+				fscanf(fp, "%d %lf", &productID, &unitPrice);
+
+				if (productID == p->id)
+				{
+					totalPrices[i] += unitPrice * restockQuantities[index];
+				}
+				index++;
+			}
+			p = p->next;
+		}
+		fclose(fp);
+	}
+
+	// 找出最低报价供应商
+	int bestSupplier = -1;
+	double minPrice = 1e9;
+
+	for (int i = 0; i < fileCount; i++)
+	{
+		if (totalPrices[i] >= 0 && totalPrices[i] < minPrice)
+		{
+			minPrice = totalPrices[i];
+			bestSupplier = i;
+		}
+	}
+
+	if (bestSupplier == -1)
+	{
+		printf("%s没有找到有效的报价单！%s\n", BOLD RED, RESET);
+	}
+	else
+	{
+		printf("%s最低报价来自供应商 %s，报价 %.2f 元%s\n", BOLD GREEN, filenames[bestSupplier], minPrice, RESET);
+		// 更新库存
+		printf("%s正在更新库存...%s\n", BOLD GREEN, RESET);
+		p = Product_L->next;
+		index = 0;
+		while (p)
+		{
+			if (p->stock == 0)
+			{
+				p->stock += restockQuantities[index];
+				printf("ID 为 %d 的商品 %s 库存已更新为 %d\n", p->id, p->name, p->stock);
+				index++;
+			}
+			p = p->next;
+		}
+
+		saveProductToFile(PRODUCT_FILE, Product_L);
+	}
+
+	// 释放内存
+	free(restockQuantities);
+	free(totalPrices);
+	printf("%s操作完成，按任意键返回管理员菜单%s\n", YELLOW, RESET);
 	_getch();
 	return ADMIN_MENU;
 }
