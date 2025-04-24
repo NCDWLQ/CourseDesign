@@ -13,6 +13,7 @@ typedef int Status;
 #define USER_FILE "user.txt"
 #define PRODUCT_FILE "product.txt"
 #define DISCOUNT_FILE "discount.txt"
+#define LOG_FILE "sales_log.txt"
 
 #define MAX_CATEGORIES_LENTH 100
 
@@ -87,10 +88,11 @@ typedef struct ShoppingCart
 typedef struct Discount
 {
 	int id;
-	char category[2][15];		// 优惠商品类别
-	double discountRate;		// 折扣百分比
-	double minAmount;			// 最低消费金额
-	time_t endDate;				// 结束日期
+	char category[2][15];       // 优惠商品类别
+	double discountRate;        // 折扣百分比
+	double minAmount;           // 最低消费金额
+	time_t endDate;             // 结束日期
+	int minimumLevel;           // 会员等级限制，用户等级 >= minimumLevel 才能享受优惠
 	struct Discount* next;
 } DiscountNode, * DiscountList;
 
@@ -148,13 +150,17 @@ Status findItemInCart(CartList L, int id, CartList& result);
 Status deleteFromCart(CartList& L, int id);
 
 Status initDiscountList(DiscountList& L);
-Status addDiscount(DiscountList& L, int id, char category1[15], char category2[15], double discountRate, double minAmount, time_t endDate);
+Status addDiscount(DiscountList& L, int id, char category1[15], char category2[15], double discountRate, double minAmount, time_t endDate, int minimumLevel);
 Status deleteDiscount(DiscountList& L, int id);
 Status deleteExpiredDiscount(DiscountList& L);
 Status addDiscountUI(ProductList Product_L, DiscountList& L);
 Status readDiscountFromFile(const char* filename, DiscountList& L);
 Status saveDiscountToFile(const char* filename, DiscountList L);
 Status printDiscountList(DiscountList L);
+
+Status salesLog(double totalPay);
+
+bool isToday(time_t timestamp);
 
 SystemState mainMenu();
 
@@ -173,6 +179,7 @@ SystemState adminMenu();
 SystemState productManagement(ProductList& Product_L);
 SystemState userManagement(UserList& User_L);
 SystemState discountManagement(ProductList Product_L, DiscountList& Discount_L);
+SystemState salesReport();
 
 // 定义全局变量，指示当前用户
 UserList currUser = NULL;
@@ -247,7 +254,7 @@ int main()
 			currState = discountManagement(Product_L, Discount_L);
 			break;
 		case SALES_REPORT:
-			// 销售报告逻辑
+			currState = salesReport();
 			break;
 		case TEST:
 			return OK;
@@ -1150,7 +1157,7 @@ Status initDiscountList(DiscountList& L)
 }
 
 // 添加优惠信息
-Status addDiscount(DiscountList& L, int id, char category1[15], char category2[15], double discountRate, double minAmount, time_t endDate)
+Status addDiscount(DiscountList& L, int id, char category1[15], char category2[15], double discountRate, double minAmount, time_t endDate, int minimumLevel)
 {
 	DiscountList p, newNode;
 	// 新建一个节点
@@ -1161,6 +1168,7 @@ Status addDiscount(DiscountList& L, int id, char category1[15], char category2[1
 	newNode->discountRate = discountRate;
 	newNode->minAmount = minAmount;
 	newNode->endDate = endDate;
+	newNode->minimumLevel = minimumLevel;
 	newNode->next = NULL;
 	// 将新节点添加到链表末尾
 	p = L;
@@ -1324,9 +1332,18 @@ Status addDiscountUI(ProductList Product_L, DiscountList& L)
 		p = p->next;
 	}
 	id++;		// 新优惠 ID 为最大 ID + 1
+
+	int minimumLevel;
+	printf("请输入享受折扣所需的最低会员等级（1~5）: ");
+	scanf("%d", &minimumLevel);
+	if (minimumLevel < 1 && minimumLevel > 5)
+	{
+		printf("%s会员等级必须在 1 到 5 之间！%s\n", BOLD RED, RESET);
+		return ERROR;
+	}
 	
 	// 添加优惠到链表
-	addDiscount(L, id, categories[choice - 1].category1, categories[choice - 1].category2, discountRate, minAmount, endDate);
+	addDiscount(L, id, categories[choice - 1].category1, categories[choice - 1].category2, discountRate, minAmount, endDate, minimumLevel);
 	saveDiscountToFile(DISCOUNT_FILE, L);
 	return OK;
 }
@@ -1344,10 +1361,12 @@ Status readDiscountFromFile(const char* filename, DiscountList& L)
 	char category1[15], category2[15];
 	double discountRate, minAmount;
 	time_t endDate;
+	int minimumLevel;
 
-	while (fscanf(fp, "%d %s %s %lf %lf %lld", &id, category1, category2, &discountRate, &minAmount, &endDate) != EOF)
+	// Update the format to include minimumLevel
+	while (fscanf(fp, "%d %s %s %lf %lf %lld %d", &id, category1, category2, &discountRate, &minAmount, &endDate, &minimumLevel) != EOF)
 	{
-		addDiscount(L, id, category1, category2, discountRate, minAmount, endDate);
+		addDiscount(L, id, category1, category2, discountRate, minAmount, endDate, minimumLevel);
 	}
 
 	fclose(fp);
@@ -1369,7 +1388,7 @@ Status saveDiscountToFile(const char* filename, DiscountList L)
 	}
 	while (p)
 	{
-		fprintf(fp, "%d %s %s %.2f %.2f %lld\n", p->id, p->category[0], p->category[1], p->discountRate, p->minAmount, p->endDate);
+		fprintf(fp, "%d %s %s %.2f %.2f %lld %d\n", p->id, p->category[0], p->category[1], p->discountRate, p->minAmount, p->endDate, p->minimumLevel);
 		p = p->next;
 	}
 	fclose(fp);
@@ -1389,7 +1408,8 @@ Status printDiscountList(DiscountList L)
 	printAligned("商品分类", 30);
 	printAligned("折扣率", 10);
 	printAligned("生效金额", 10);
-	printAligned("截止日期", 20);
+	printAligned("截止日期", 22);
+	printAligned("最低会员等级", 10);
 	printf("\n");
 	printSeparator("-", WHITE, getConsoleWidth());
 
@@ -1413,7 +1433,8 @@ Status printDiscountList(DiscountList L)
 		printAligned(category, 30);
 		printf("%-10.2f", p->discountRate);
 		printf("%-10.2f", p->minAmount);
-		printf("%s%-20s%s\n", YELLOW, timeStr, RESET);
+		printf("%-22s",timeStr);
+		printf("%-10d\n", p->minimumLevel);
 		p = p->next;
 		count++;
 	}
@@ -1421,6 +1442,58 @@ Status printDiscountList(DiscountList L)
 	printf("共 %d 条优惠信息\n\n", count);
 	return OK;
 }
+
+// 将销售记录保存到文件
+Status salesLog(int pointsUsed, double totalPay, int pointsEarned)
+{
+	FILE* fp;
+	
+	// 以追加模式打开文件
+	if ((fp = fopen(LOG_FILE, "a")) == NULL)
+	{
+		return ERROR;
+	}
+
+	time_t now = time(NULL);
+
+	int itemCount = 0;
+	CartList cart_p = Cart_L->next;
+	while (cart_p)
+	{
+		itemCount++;
+		cart_p = cart_p->next;
+	}
+
+	fprintf(fp, "%lld %s %d ", now, currUser->username, itemCount);
+
+	cart_p = Cart_L->next;
+	while (cart_p)
+	{
+		fprintf(fp, "%d %d ", cart_p->id, cart_p->quantity);
+		cart_p = cart_p->next;
+	}
+	fprintf(fp, "%d %.2f %d\n", pointsUsed, totalPay, pointsEarned);
+
+	fclose(fp);
+	return OK;
+}
+
+// 判断时间戳是否为当日
+bool isToday(time_t timestamp)
+{
+	// 获取当前时间
+	time_t now = time(NULL);
+
+	// 转换为本地时间结构
+	struct tm* today = localtime(&now);
+	struct tm* timeinfo = localtime(&timestamp);
+
+	// 比较年、月、日是否相同
+	return (today->tm_year == timeinfo->tm_year &&
+		today->tm_mon == timeinfo->tm_mon &&
+		today->tm_mday == timeinfo->tm_mday);
+}
+
 
 // 主菜单
 SystemState mainMenu()
@@ -2046,7 +2119,7 @@ SystemState checkout(ProductList Product_L, DiscountList Discount_L, UserList& U
 		return USER_MENU;
 	}
 
-	// 1. 显示购物清单
+	// 显示购物清单
 	printf("%s您的购物清单：%s\n", BOLD, RESET);
 	printAligned("商品名称", 50);
 	printAligned("数量", 10);
@@ -2077,7 +2150,7 @@ SystemState checkout(ProductList Product_L, DiscountList Discount_L, UserList& U
 	printSeparator("-", WHITE, getConsoleWidth());
 	printf("商品原始总价：%.2f 元\n\n", cartTotal);
 
-	// 2. 检查可用折扣并自动计算最优折扣
+	// 检查可用折扣并自动计算最优折扣
 	time_t now = time(NULL);
 	DiscountList discount = Discount_L->next;
 	int discountCount = 0;
@@ -2085,7 +2158,7 @@ SystemState checkout(ProductList Product_L, DiscountList Discount_L, UserList& U
 	// 统计有效折扣数量
 	while (discount)
 	{
-		if (now < discount->endDate) // 只考虑未过期的折扣
+		if (now < discount->endDate && currUser->memberLevel >= discount->minimumLevel) // 只考虑未过期的折扣且用户等级满足要求的折扣
 		{
 			discountCount++;
 		}
@@ -2202,7 +2275,7 @@ SystemState checkout(ProductList Product_L, DiscountList Discount_L, UserList& U
 			printf("符合折扣条件的商品总价：%.2f 元\n", bestCategoryTotal);
 			printf("折扣后价格：%.2f 元\n", bestCategoryTotal * bestDiscount->discountRate);
 			printf("节省金额：%.2f 元\n", maxSavings);
-			printf("最终应付金额：%.2f 元\n\n", bestFinalTotal);
+			printf("%s最终应付金额：%.2f 元%s\n\n", BOLD YELLOW, bestFinalTotal, RESET);
 
 			// 结算过程
 			printf("是否确认结账？(输入 1 确认，0 取消): ");
@@ -2227,6 +2300,14 @@ SystemState checkout(ProductList Product_L, DiscountList Discount_L, UserList& U
 				saveUserToFile(USER_FILE, User_L);
 				saveProductToFile(PRODUCT_FILE, Product_L);
 
+				salesLog(0, cartTotal, pointsEarned);
+
+				// 更新会员等级
+				if (currUser->memberLevel < 5 && pointsEarned >= currUser->memberLevel * 100)
+				{
+					currUser->memberLevel++;
+				}
+
 				// 清空购物车
 				CartList curr = Cart_L->next;
 				while (curr)
@@ -2237,8 +2318,7 @@ SystemState checkout(ProductList Product_L, DiscountList Discount_L, UserList& U
 				}
 				Cart_L->next = NULL;
 
-				printf("%s结账成功！您获得了 %d 积分，当前总积分：%d%s\n",
-					BOLD GREEN, pointsEarned, currUser->points, RESET);
+				printf("%s结账成功！您获得了 %d 积分，当前总积分：%d%s\n", BOLD GREEN, pointsEarned, currUser->points, RESET);
 				Sleep(2000);
 				return USER_MENU;
 			}
@@ -2255,7 +2335,40 @@ SystemState checkout(ProductList Product_L, DiscountList Discount_L, UserList& U
 		}
 	}
 
+	int choice = -1;
+	int pointsToUse = 0;
+	printf("是否使用积分抵扣？（输入 1 使用，0 不使用）: ");
+	scanf("%d", &choice);
+	if (choice == 1)
+	{
+		printf("100 积分可抵扣 1 元，您当前积分：%d，最多可使用 %d\n", currUser->points, (int)(cartTotal * 10));
+		printf("请输入要使用的积分（输入 0 取消）: ");
+		while (1)
+		{
+			scanf("%d", &pointsToUse);
+			if (pointsToUse > currUser->points)
+			{
+				printf("%s积分不足，请重新输入！%s\n", BOLD RED, RESET);
+			}
+			else if (pointsToUse < 0)
+			{
+				printf("%s输入的积分不合法，请重新输入！%s\n", BOLD RED, RESET);
+			}
+			else if (pointsToUse > (int)(cartTotal * 10))
+			{
+				printf("%s超过可抵扣积分上限，请重新输入！%s\n", BOLD RED, RESET);
+			}
+			else
+			{
+				cartTotal -= pointsToUse / 100.0; // 抵扣金额
+				break;
+			}
+		}
+	}
+
+
 	// 常规结账流程（不使用折扣或没有可用折扣）
+	printf("%s应付金额：%.2f 元%s\n", BOLD YELLOW, cartTotal, RESET);
 	printf("是否确认结账？(输入 1 确认，0 取消): ");
 	int confirm;
 	scanf("%d", &confirm);
@@ -2271,12 +2384,19 @@ SystemState checkout(ProductList Product_L, DiscountList Discount_L, UserList& U
 			p->stock -= cart->quantity; // 减少库存
 			cart = cart->next;
 		}
-
-		// 更新用户积分
 		int pointsEarned = (int)cartTotal;
+		currUser->points -= pointsToUse; // 扣除使用的积分
 		currUser->points += pointsEarned;
 		saveUserToFile(USER_FILE, User_L);
 		saveProductToFile(PRODUCT_FILE, Product_L);
+
+		salesLog(pointsToUse, cartTotal, pointsEarned);
+
+		// 更新会员等级
+		if (currUser->memberLevel < 5 && pointsEarned >= currUser->memberLevel * 100)
+		{
+			currUser->memberLevel++;
+		}
 
 		// 清空购物车
 		CartList curr = Cart_L->next;
@@ -2288,8 +2408,7 @@ SystemState checkout(ProductList Product_L, DiscountList Discount_L, UserList& U
 		}
 		Cart_L->next = NULL;
 
-		printf("%s结账成功！您获得了 %d 积分，当前总积分：%d%s\n",
-			BOLD GREEN, pointsEarned, currUser->points, RESET);
+		printf("%s结账成功！您获得了 %d 积分，当前总积分：%d%s\n", BOLD GREEN, pointsEarned, currUser->points, RESET);
 		Sleep(2000);
 	}
 	else
@@ -2314,13 +2433,26 @@ SystemState discountInfo(ProductList Product_L, DiscountList Discount_L, UserLis
 
 	printf("优惠规则：\n");
 	printf("1. 部分商品自身存在优惠价\n");
-	printf("2. 部分商品分类存在折扣，当该分类下的商品达到最低金额时即可使用\n");
+	printf("2. 部分商品分类存在折扣，该分类下商品总价与会员等级达到要求后即可享受\n");
 	printf("3. 优惠价和折扣不能叠加使用，即折扣使用商品的原价计算\n");
 	printf("4. 单次购物最多只能使用一个折扣\n");
 	printf("5. 结算时系统会自动选择最优惠的组合\n");
+	printf("6. 结算时可使用积分抵扣，100 积分可抵扣 1 元，不得与折扣同时使用\n");
+	printf("7. 结算时积分可抵扣金额不得超过购物车总价的 10%%\n");
+	printf("8. 您当前会员等级为 %d", currUser->memberLevel);
+	if (currUser->memberLevel == 5)
+	{
+		printf("，已是最高等级！\n");
+	}
+	else
+	{
+		printf("，再消费 %d 可升级\n", currUser->memberLevel * 100);
+	}
+
 	printSeparator("-", WHITE, getConsoleWidth());
 
 	// 显示折扣列表
+	printCentered("折扣列表", WHITE, getConsoleWidth());
 	printDiscountList(Discount_L);
 	// 按任意键返回用户菜单
 	printf("%s按任意键返回用户菜单%s\n", YELLOW, RESET);
@@ -2469,4 +2601,58 @@ SystemState discountManagement(ProductList Product_L, DiscountList& Discount_L)
 		Sleep(1000);
 		return DISCOUNT_MANAGEMENT;
 	}
+}
+
+SystemState salesReport()
+{
+	system("cls");
+	printHeader();
+	printCentered("销售统计", WHITE, getConsoleWidth());
+
+	FILE* fp;
+	if ((fp = fopen(LOG_FILE, "r")) == NULL)
+	{
+		printf("%s打开日志文件失败！%s\n", BOLD RED, RESET);
+		Sleep(1000);
+		return ADMIN_MENU;
+	}
+
+	int todayOrders = 0;
+	double todaySales = 0.0;
+
+	time_t timestamp;
+	char username[20];
+	int itemCount, id, quantity, pointsUsed, pointsEarned;
+	double actualPay;
+
+	// 逐条读取日志
+	while (fscanf(fp, "%lld %s %d", &timestamp, username, &itemCount) != EOF)
+	{
+		// 跳过商品 ID 和数量
+		for (int i = 0; i < itemCount; i++)
+		{
+			fscanf(fp, "%d %d", &id, &quantity);
+		}
+
+		// 读取积分和实际支付金额
+		fscanf(fp, "%d %lf %d", &pointsUsed, &actualPay, &pointsEarned);
+
+		// 计算今天的订单
+		if (isToday(timestamp))
+		{
+			todayOrders++;
+			todaySales += actualPay;
+		}
+	}
+	fclose(fp);
+
+	// 打印统计结果
+	time_t now = time(NULL);
+	struct tm* timeinfo = localtime(&now);
+	printf("当前日期：%04d-%02d-%02d\n", 1900 + timeinfo->tm_year, 1 + timeinfo->tm_mon, timeinfo->tm_mday);
+	printf("今日订单数：%d\n", todayOrders);
+	printf("今日销售额：%.2f 元\n", todaySales);
+	printf("%s按任意键返回管理员菜单%s\n", YELLOW, RESET);
+	_getch();
+	return ADMIN_MENU;
 }
